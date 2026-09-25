@@ -16,6 +16,26 @@ pub const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// extensions, but in v1 `version` is the whole set.
 pub const BUILD_TIME_VARS: [&str; 1] = ["version"];
 
+/// Capability tokens a template set can declare as implemented.
+///
+/// The eight `--features` values (spec §3.3) plus the non-flag toggles. `init`
+/// hard-errors (exit 65) when a user asks for a capability the template set did
+/// not declare — silently generating nothing is worse than failing.
+pub const KNOWN_FEATURES: [&str; 12] = [
+    "sqlite",
+    "bstats",
+    "update-check",
+    "placeholderapi",
+    "gui",
+    "spotbugs",
+    "coverage",
+    "release-ci",
+    "example",
+    "permissions",
+    "quality",
+    "git",
+];
+
 /// Where the template *files* come from. Not part of the manifest file.
 #[derive(Debug, Clone, Default)]
 pub enum SourceRef {
@@ -58,9 +78,21 @@ pub struct TemplateManifest {
     pub entries: Vec<Entry>,
     #[serde(default)]
     pub assertions: Vec<Assertion>,
+    /// What this template set actually implements (see [`KNOWN_FEATURES`]).
+    #[serde(default)]
+    pub features: Features,
     /// Resolved template file source (never serialized).
     #[serde(skip)]
     pub source: SourceRef,
+}
+
+/// `[features] implemented = [...]` — capabilities this template set really
+/// generates. Absent/empty means "nothing optional implemented".
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Features {
+    #[serde(default)]
+    pub implemented: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,6 +193,13 @@ pub fn load_from_str_with_source(toml: &str, source: SourceRef) -> Result<Templa
 }
 
 impl TemplateManifest {
+    /// Capabilities this template set declares as implemented. `init` compares
+    /// the user's request against this list and hard-errors on a mismatch
+    /// (exit 65) instead of silently generating nothing.
+    pub fn implemented_features(&self) -> &[String] {
+        &self.features.implemented
+    }
+
     /// Structural validation independent of `ProjectSpec`. Returns warnings.
     pub fn validate(&self) -> Result<Vec<String>> {
         let mut warnings = Vec::new();
@@ -207,6 +246,24 @@ impl TemplateManifest {
                 return Err(config_error(
                     "template.manifest_invalid",
                     format!("vars 重复声明变量 `{v}`"),
+                ));
+            }
+        }
+        let mut seen_features = BTreeSet::new();
+        for f in &self.features.implemented {
+            if !KNOWN_FEATURES.contains(&f.as_str()) {
+                return Err(config_error(
+                    "template.manifest_invalid",
+                    format!(
+                        "[features] implemented 里的 `{f}` 不是已知能力（可用: {}）",
+                        KNOWN_FEATURES.join(", ")
+                    ),
+                ));
+            }
+            if !seen_features.insert(f.as_str()) {
+                return Err(config_error(
+                    "template.manifest_invalid",
+                    format!("[features] implemented 重复声明 `{f}`"),
                 ));
             }
         }

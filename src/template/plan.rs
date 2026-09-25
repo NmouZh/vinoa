@@ -6,7 +6,7 @@
 //! deterministic — same `(spec, resolved)` in, byte-identical file set out
 //! (ruling C2), so no timestamps, years, machine paths or random data.
 use crate::error::{Error, Result, EXIT_CONFIG};
-use crate::template::manifest::{self, Entry, Render, TemplateManifest};
+use crate::template::manifest::{self, Entry, Render, SourceRef, TemplateManifest};
 use crate::template::render::{self, Ctx, Renderer};
 use crate::template::vars;
 use crate::types::{Plan, PlannedAction, PlannedFile, PlatformPlan, ProjectSpec, Resolved};
@@ -99,6 +99,41 @@ pub fn build_plan_with_vars(
                 state.consumed_raw.insert(render::camel(&id));
             }
         }
+    }
+
+    // --- A4 static footprint pass -----------------------------------------
+    // "Declared but never consumed" is a property of the *template set*, not of
+    // one rendering: `plugin.yml` only exists for paper/bukkit/folia, so a
+    // velocity-only run would otherwise report `pluginYmlApiVersion` as unused.
+    // Scan every entry, ignore `when` and the selected platforms, and best-effort
+    // read each platform's source (a gated entry may legitimately have none).
+    for entry in &manifest.entries {
+        if let Some(expr) = &entry.when {
+            collect_condition_consumption(manifest, expr, &mut state);
+        }
+        for name in placeholders(&entry.path) {
+            if name != "platform" {
+                state.consumed_raw.insert(render::camel(&name));
+            }
+        }
+        match entry.foreach.as_deref() {
+            Some("platforms") => {
+                for p in crate::types::PLATFORMS {
+                    static_scan_entry(&manifest.source, entry, Some(p), &mut state)?;
+                }
+            }
+            _ => static_scan_entry(&manifest.source, entry, None, &mut state)?,
+        }
+    }
+
+    // folia + paper-plugin.yml: the upstream format has no `folia-supported`
+    // field, so the Folia support declaration is dropped (Lead ruling).
+    if platforms.iter().any(|p| p == "folia")
+        && ctx.get("is_paper_metadata").and_then(Value::as_bool) == Some(true)
+    {
+        warnings.push(
+            "folia + paper-plugin.yml：上游格式没有 `folia-supported` 字段，无法声明 Folia 支持，Folia 可能拒绝加载；需要该声明请改用 plugin.yml".to_string(),
+        );
     }
 
     for entry in &manifest.entries {
@@ -194,7 +229,6 @@ fn process_entry(
 ) -> Result<()> {
     // 1. `when`
     if let Some(expr) = &entry.when {
-        collect_condition_consumption(manifest, expr, state);
         if !render::eval_condition(expr, ctx)? {
             // Routine conditional skip: informational, goes to `skipped[]`.
             let label = render_target_path(&entry.path, ctx, renderer)
@@ -209,39 +243,9 @@ fn process_entry(
 
     // 2. target path
     let target = render_target_path(&entry.path, ctx, renderer)?;
-    // Path placeholders are variables too (A4); `platform` is a loop local.
-    for name in placeholders(&entry.path) {
-        if name != "platform" {
-            state.consumed_raw.insert(render::camel(&name));
-        }
-    }
 
     // 3. source path
-    let raw_source = match &entry.template {
-        Some(src) => src.clone(),
-        None => {
-            if entry.path.contains("{{") {
-                return Err(config_error(
-                    "template.bad_target",
-                    format!(
-                        "条目 {} 的目标路径含占位符却没有 `template` 源路径",
-                        entry.path
-                    ),
-                ));
-            }
-            entry.path.clone()
-        }
-    };
-    let mut source = raw_source;
-    if let Some(p) = &platform {
-        source = source.replace("_p_", p);
-    }
-    if source.contains("{{") || source.contains("{%") {
-        return Err(config_error(
-            "template.bad_target",
-            format!("源路径必须是字面量（{source}）；平台分叉请用 `_p_`"),
-        ));
-    }
+    let source = source_path_for(entry, platform.as_deref())?;
     let bytes = manifest::read_source(&manifest.source, &source)?;
 
     // 4. render / copy
@@ -253,13 +257,6 @@ fn process_entry(
                     format!("模板 {source} 不是合法 UTF-8: {e}"),
                 )
             })?;
-            let mut locals: Vec<String> = entry.paths.clone();
-            if platform.is_some() {
-                locals.extend(LOOP_LOCALS.iter().map(|s| s.to_string()));
-            }
-            let ex = render::extract_vars(src, &locals);
-            state.consumed_raw.extend(ex.raw);
-            state.consumed_switches.extend(ex.switches);
             let rendered = renderer.render(&source, src, ctx)?;
             let exempt = render::raw_literals(src);
             if !exempt.is_empty() {
@@ -314,6 +311,64 @@ fn process_entry(
             executable,
         },
     );
+    Ok(())
+}
+
+/// Resolve an entry's literal source path (with `_p_` -> platform).
+fn source_path_for(entry: &Entry, platform: Option<&str>) -> Result<String> {
+    let raw_source = match &entry.template {
+        Some(src) => src.clone(),
+        None => {
+            if entry.path.contains("{{") {
+                return Err(config_error(
+                    "template.bad_target",
+                    format!(
+                        "条目 {} 的目标路径含占位符却没有 `template` 源路径",
+                        entry.path
+                    ),
+                ));
+            }
+            entry.path.clone()
+        }
+    };
+    let mut source = raw_source;
+    if let Some(p) = platform {
+        source = source.replace("_p_", p);
+    }
+    if source.contains("{{") || source.contains("{%") {
+        return Err(config_error(
+            "template.bad_target",
+            format!("源路径必须是字面量（{source}）；平台分叉请用 `_p_`"),
+        ));
+    }
+    Ok(source)
+}
+
+/// A4 footprint: read the entry's template (best effort — a `when`-gated entry
+/// may legitimately have no source on disk) and record what it consumes.
+fn static_scan_entry(
+    source_ref: &SourceRef,
+    entry: &Entry,
+    platform: Option<&str>,
+    state: &mut BuildState,
+) -> Result<()> {
+    if entry.render == Render::Copy {
+        return Ok(());
+    }
+    let source = source_path_for(entry, platform)?;
+    let Ok(bytes) = manifest::read_source(source_ref, &source) else {
+        return Ok(());
+    };
+    let Ok(src) = std::str::from_utf8(&bytes) else {
+        return Ok(());
+    };
+    let mut locals: Vec<String> = entry.paths.clone();
+    if platform.is_some() {
+        locals.extend(LOOP_LOCALS.iter().map(|s| s.to_string()));
+    }
+    let ex = render::extract_vars(src, &locals);
+    state.consumed_raw.extend(ex.raw);
+    state.consumed_switches.extend(ex.switches);
     Ok(())
 }
 

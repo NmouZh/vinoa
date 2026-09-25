@@ -6,6 +6,12 @@ plugins {
 {% if cap_quality %}
     checkstyle
 {% endif %}
+{% if cap_coverage %}
+    jacoco
+{% endif %}
+{% if cap_spotbugs %}
+    alias(libs.plugins.spotbugs)
+{% endif %}
 }
 
 description = "Sponge adapter for {{ pluginName }} (experimental)."
@@ -59,3 +65,23 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 {% endif %}
 }
+
+{% if cap_spotbugs %}
+spotbugs {
+    // A modern target uses the current SpotBugs line; a Java 8 target needs the 4.8.x line.
+    toolVersion = if (targetJava <= 8) libs.versions.spotbugsLegacy.get() else libs.versions.spotbugsModern.get()
+    effort = "max"
+    reportLevel = "medium"
+}
+tasks.withType<com.github.spotbugs.snom.SpotBugsTask>().configureEach {
+    reports.create("html") { required.set(true) }
+}
+{% endif %}
+{% if cap_coverage %}
+tasks.withType<org.gradle.testing.jacoco.tasks.JacocoReport>().configureEach {
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+{% endif %}

@@ -16,6 +16,10 @@ junitModern = "{{ junitModernVersion }}"
 {% if cap_run_paper %}
 runPaper = "{{ runPaperVersion }}"
 {% endif %}
+{% if cap_spotbugs %}
+# Version of the SpotBugs Gradle plugin (the analysis tool version is set per module).
+spotbugsPlugin = "{{ spotbugsPluginVersion }}"
+{% endif %}
 shadow = "{{ shadowVersion }}"
 
 [libraries]
@@ -27,7 +31,12 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 junit-bom-legacy = { module = "org.junit:junit-bom", version.ref = "junitLegacy" }
 junit-bom-modern = { module = "org.junit:junit-bom", version.ref = "junitModern" }
 
-{% if cap_run_paper %}
+{% if cap_run_paper or cap_spotbugs %}
 [plugins]
+{% if cap_run_paper %}
 run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "runPaper" }
+{% endif %}
+{% if cap_spotbugs %}
+spotbugs = { id = "com.github.spotbugs", version.ref = "spotbugsPlugin" }
+{% endif %}
 {% endif %}

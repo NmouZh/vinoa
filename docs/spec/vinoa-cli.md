@@ -244,7 +244,8 @@ junit_java8_max = "5.14.4"; gradle_checkstyle_default = "10.24.0"
 5. 代理端（`velocity` / `bungeecord`）不参与 MC 版本过滤，恒可选。
 ### 6.4 离线 / 联网语义
 - **默认离线**：内置矩阵是唯一事实来源；同一输入两次运行必须给出完全相同结果。
-- `vinoa versions --refresh`：写**用户缓存目录**，后续 `init` 使用缓存；**不写进生成的工程**。
+- `vinoa versions --refresh`：写**用户缓存目录**，**不写进生成的工程**。
+- **谁读缓存（2026-09-25 收敛，实现为准）**：`init` 默认**只用内置矩阵**，使“同一 CLI 版本 + 同一输入 → 字节相同的产物”不依赖机器状态；`--online` 才使用刷新后的数据（并落缓存）；`versions` 输出来源三态 `builtin` / `cache` / `online`。缓存服务于 `versions` 与未来的 `build` 命令。理由：缓存只含 Fill 的 release/build 数据，**只能收窄可用版本而不能新增**，而收窄是危险方向（例如误裁 1.8.9 这类无 Paper 上游的版本）。
 - `--online`：单次使用联网结果（仍落缓存）；离线时回退内置矩阵并**警告**，不阻塞生成。
 - 请求必须带**非通用 `User-Agent`**（标识软件 + 联系 URL/邮箱）`[VM §1.6]`；数据带 `generated_at`，`--json` 标注来源（`builtin` / `cache` / `online`）。
 - `?channel=STABLE` 只对 `/builds` 有效；`/builds/latest` **忽略该参数** → 频道过滤在 Rust 侧自己做（取第一个 `channel == "STABLE"`），绝不依赖 `latest` `[VM §1.4]`。
@@ -791,6 +792,10 @@ stdout 恰好一个 JSON 文档；人类可读文本走 stderr。
 | **R2** | **minijinja 细节待验**：`{% raw %}` 可用性、`UndefinedBehavior::Strict` 与 `render_named_str` 组合下的错误位置精度、空列表 `{% for %}` 行为 | §7.2 的措辞可能需微调（语义不变） | 实现前先做 20 行最小实验确认，再写死 §7.2 的措辞；结论不改变对用户可见行为 |
 | **R3** | **质量工具降级地板待真机构建**：checkstyle 9.3 / spotbugs 4.8.6 / junit 5.14.4 的 Java 8 上界来自字节码探测；同一份 `checkstyle.xml` 同时喂 9.3 与 13.x（`LineLength`/`ImportOrder` 等在 10/11/13 间有弃用变更）未实跑 | §9.5 的版本可能在首次真机构建时失败 | 以生成物 `--verify` 的**第一次真机构建**为准替换 §9.5 的取值；同一份 config 针对两个 checkstyle 主版本各跑一次 |
 | **R4** | **上游漂移**：平台坐标、Java 地板、Gradle 与插件版本、BungeeCord/Sponge/Minestom 的发布节奏都不由 vinoa 控制；`26.3` 目前只有 `ALPHA`，Sponge API 18/19/20/21 仍是快照/RC 线 | A 级保证行可能因上游变化变红；B 级组合可能静默失效 | 夜间 cron 跑 `versions --refresh` 后再跑一次全矩阵以提前发现；坐标只从矩阵出，漂移时改数据不改代码 |
+| **R12** | **`folia` + `--metadata paper-plugin` 无法声明 `folia-supported`**（上游 `paper-plugin.yml` 无该字段，硬塞未知字段可能被拒） | 该组合下 Folia 可能拒绝加载插件（B 级组合） | 在 plan 里给 `warnings`；若上游未来支持该字段则改模板 |
+| **R13** | **`commands.aliases:` 未生成**：模板无法从 `commandName` 安全派生短别名（受限表达式语言禁止切片/算术） | 用户可能期待示例命令带别名 | engine 提供 `commandAlias` 变量后补齐 |
+| **R14** | **`paper-plugin.yml` 的 `api-version` 固定为 `'1.19'`**：这是最宽松合法值，与用户目标 MC 版本无关 | 看似“没跟进目标版本”，实为有意为之（最大化可加载范围） | 矩阵提供 api-version 数据后改为变量 |
+| **R15** | **可选模块模板尚未全部实现**（`sqlite`/`bstats`/`update-check`/`placeholderapi`/`gui`、`integrationTest`、`spotbugs`/`coverage`/`release-ci`、`libraries:` 块）——task-7 进行中 | `--features X` 目前可能静默不生成，用户以为已有 | engine 在清单声明“已实现 feature”，`init` 对未实现/缺坐标的 feature **硬报错**；全部实现后删除本条 |
 | R5 | 外部 git 模板的信任边界只有四项（无 hook 执行、记录 commit、尺寸上限、二次确认）；**不做签名校验，不透传私有仓库凭据** | 使用第三方模板有供应链风险 | 已在 §7.9 与 README 明说；不新增机制（v1 决策） |
 | R6 | `[thirdparty]` 中 bStats / sqlite-jdbc / GUI 库的坐标值尚未做 primary-source 核对（只有 `placeholderapi` 有草稿来源） | 勾选这三个特性时可能解析失败 | 实现时按 primary source 补全矩阵数据；矩阵是唯一写入点 |
 | R7 | Sponge / Minestom 的示例代码 API 名与注册时机随版本跳变（SpongeAPI 4.2.0 → 20.0.0），本轮只给出形状 | B 级组合上的示例可能编译不过 | 逐版本实测后再定稿示例；B 级不承诺构建（§12.1） |

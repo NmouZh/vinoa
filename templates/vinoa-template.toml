@@ -23,7 +23,14 @@ vars = [
   "license", "mcVersion", "packageName", "packagePath", "permissionNode",
   "pluginDescription", "pluginId", "pluginName", "pluginYmlApiVersion",
   "platforms", "projectName", "projectVersion", "runPaperVersion", "shadowVersion",
+  "spotbugsPluginVersion",
 ]
+
+# 本模板集真正实现了的能力白名单；init 对未实现项硬报错（exit 65），不再静默。
+# token 用 CLI 原词：sqlite/bstats/update-check/placeholderapi/gui/spotbugs/coverage/
+# release-ci + example/permissions/quality/git。templates-dev 每交付一个模块加一项。
+[features]
+implemented = ["example", "permissions", "quality", "git"]
 
 # 开关名 -> §7.5 表达式。内置开关（cap_*/has_*/is_*）由 Rust 侧自动折叠；
 # 这里只声明需要额外组合的（v1 暂无）。

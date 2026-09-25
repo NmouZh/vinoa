@@ -32,11 +32,14 @@ const QUALITY_SCALARS: [(&str, &str); 6] = [
     ("spotbugs_legacy", "spotbugsLegacyVersion"),
 ];
 
-const GRADLE_PLUGIN_SCALARS: [(&str, &str); 4] = [
+const GRADLE_PLUGIN_SCALARS: [(&str, &str); 5] = [
     ("run_paper", "runPaperVersion"),
     ("run_velocity", "runVelocityVersion"),
     ("shadow", "shadowVersion"),
     ("paperweight", "paperweightVersion"),
+    // SpotBugs' *Gradle plugin* version (distinct from the tool version above);
+    // required for `--features spotbugs`.
+    ("spotbugs_plugin", "spotbugsPluginVersion"),
 ];
 
 /// §9.5 hard floors, used only when the matrix has no value (a warning is
@@ -227,13 +230,16 @@ pub fn build_context(
         "website".into(),
         json!(spec.website.clone().unwrap_or_default()),
     );
-    ctx.insert(
-        "bstatsPluginId".into(),
-        match &spec.bstats_id {
-            Some(id) => json!(id),
-            None => Value::Null,
-        },
-    );
+    // Numeric bStats ids render as numbers (Java `int` constant); omit the key
+    // entirely when absent so a bstats template fails loudly rather than
+    // embedding a fake id (spec §11.1 / ruling A2).
+    if let Some(id) = &spec.bstats_id {
+        let value = match id.parse::<u64>() {
+            Ok(n) => json!(n),
+            Err(_) => json!(id),
+        };
+        ctx.insert("bstatsPluginId".into(), value);
+    }
 
     // --- capability switches (spec §7.5/§7.6) -----------------------------
     let mut sw = Map::new();
@@ -283,6 +289,7 @@ pub fn build_context(
     sw.insert("cap_legacy_namespace".into(), json!(legacy_namespace));
     sw.insert("legacyNamespace".into(), json!(legacy_namespace));
     sw.insert("has_authors".into(), json!(!spec.author.is_empty()));
+    sw.insert("has_bstats_id".into(), json!(spec.bstats_id.is_some()));
     sw.insert(
         "has_description".into(),
         json!(spec.description.as_deref().is_some_and(|d| !d.trim().is_empty())),
@@ -324,19 +331,28 @@ pub fn build_context(
         );
     }
     ctx.insert("qualityToolVersions".into(), Value::Object(quality));
+    // A matrix value wins; a §9.5 default is used only for keys that have one.
+    // A key with neither is left *undefined* on purpose: rendering it is then a
+    // hard `template.undefined_variable` instead of a silently empty string.
     for (key, name) in QUALITY_SCALARS {
-        let value = match resolved.quality.get(key) {
-            Some(v) => v.clone(),
-            None => spec_default(&key, &mut warnings),
-        };
-        ctx.insert(name.to_string(), json!(value));
+        let value = resolved
+            .quality
+            .get(key)
+            .cloned()
+            .or_else(|| spec_default(&key, &mut warnings));
+        if let Some(v) = value {
+            ctx.insert(name.to_string(), json!(v));
+        }
     }
     for (key, name) in GRADLE_PLUGIN_SCALARS {
-        let value = match resolved.gradle_plugins.get(key) {
-            Some(v) => v.clone(),
-            None => spec_default(&key, &mut warnings),
-        };
-        ctx.insert(name.to_string(), json!(value));
+        let value = resolved
+            .gradle_plugins
+            .get(key)
+            .cloned()
+            .or_else(|| spec_default(&key, &mut warnings));
+        if let Some(v) = value {
+            ctx.insert(name.to_string(), json!(v));
+        }
     }
 
     // --- explicit overrides (tests / future CLI wiring) -------------------
@@ -383,18 +399,14 @@ pub fn is_proxy(platform: &str) -> bool {
     PROXY_PLATFORMS.contains(&platform)
 }
 
-fn spec_default(key: &str, warnings: &mut Vec<String>) -> String {
-    let default = SPEC_DEFAULTS
-        .iter()
-        .find(|(k, _)| *k == key)
-        .map(|(_, v)| (*v).to_string())
-        .unwrap_or_default();
-    if !default.is_empty() {
-        warnings.push(format!(
-            "版本矩阵缺少键 `{key}`，暂用 §9.5 默认值 {default}"
-        ));
+fn spec_default(key: &str, warnings: &mut Vec<String>) -> Option<String> {
+    match SPEC_DEFAULTS.iter().find(|(k, _)| *k == key) {
+        Some((_, v)) => {
+            warnings.push(format!("版本矩阵缺少键 `{key}`，暂用 §9.5 默认值 {v}"));
+            Some((*v).to_string())
+        }
+        None => None,
     }
-    default
 }
 
 /// `group:artifact:version` -> (`group:artifact`, `version`).

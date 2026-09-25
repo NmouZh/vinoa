@@ -161,7 +161,7 @@ fn fixture_with(manifest_toml: &str) -> Fixture {
             "package {{ packageName }};\n\npublic final class ExampleService { /* {{ pluginName }} */ }\n".to_string(),
         ),
     ];
-    for p in ["paper", "bukkit", "velocity"] {
+    for p in ["paper", "bukkit", "velocity", "folia"] {
         files.push((
             format!("platforms/{p}/build.gradle.kts"),
             "// module {{ platform }} / {{ gradlePath }}\n".to_string(),
@@ -665,6 +665,70 @@ fn manifest_rejects_too_new_schema_and_cli_floor() {
 }
 
 #[test]
+fn feature_gated_templates_stay_in_the_variable_footprint() {
+    // A4 is static: a template gated off by `when` must still count, otherwise
+    // the manifest `vars` could not be stable when a feature is toggled on.
+    let manifest = r#"
+schema = 1
+id = "t"
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+vars = ["projectName", "thirdparty"]
+[[entries]]
+path = "settings.gradle.kts"
+[[entries]]
+template = "sqlite.txt"
+path = "core/storage.txt"
+when = "cap_sqlite"
+"#;
+    let dir = write_tree(&[
+        ("settings.gradle.kts", "rootProject.name = \"{{ projectName }}\"\ninclude(\"core\")\n"),
+        ("sqlite.txt", "// {{ thirdparty.placeholderapi }}\n"),
+    ]);
+    let m = load_from_str_with_source(manifest, SourceRef::Dir(dir.path().to_path_buf())).unwrap();
+    let spec = spec(&[]);
+    let resolved = resolved_for(&spec);
+
+    // sqlite off (default): file absent, A4 still satisfied.
+    let off = build_plan(&m, &spec, &resolved).unwrap();
+    assert!(!off.files.iter().any(|f| f.path == "core/storage.txt"));
+    assert!(off.skipped.iter().any(|s| s.contains("core/storage.txt")));
+
+    // sqlite on: same manifest, file rendered from the same `vars`.
+    let on = build_plan_with_vars(&m, &spec, &resolved, &extra("cap_sqlite", json!(true))).unwrap();
+    assert!(on.files.iter().any(|f| f.path == "core/storage.txt"));
+}
+
+#[test]
+fn bstats_id_is_never_fabricated() {
+    let manifest = r#"
+schema = 1
+id = "t"
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+vars = ["bstatsPluginId"]
+[[entries]]
+path = "Metrics.java"
+"#;
+    let dir = write_tree(&[("Metrics.java", "static final int ID = {{ bstatsPluginId }};\n")]);
+    let m = load_from_str_with_source(manifest, SourceRef::Dir(dir.path().to_path_buf())).unwrap();
+
+    // Missing id (renderer): undefined variable, not `null`/`0`.
+    let no_id = spec(&[]);
+    let resolved = resolved_for(&no_id);
+    let err = build_plan(&m, &no_id, &resolved).unwrap_err();
+    assert_eq!(err.code, "template.undefined_variable", "{}", err.message);
+
+    // Supplied id renders as a numeric Java literal.
+    let mut with_id = spec(&[]);
+    with_id.bstats_id = Some("12345".to_string());
+    let resolved = resolved_for(&with_id);
+    let plan = build_plan(&m, &with_id, &resolved).unwrap();
+    let body = String::from_utf8_lossy(&plan.files[0].content);
+    assert!(body.contains("ID = 12345;"), "{body}");
+}
+
+#[test]
 fn conditions_table_resolves_and_chains() {
     let manifest = r#"
 schema = 1
@@ -717,6 +781,53 @@ path = "a.txt"
     let err = build_plan(&m, &spec, &resolved).unwrap_err();
     assert_eq!(err.code, "template.bad_target", "{}", err.message);
     assert!(err.message.contains("重复"));
+}
+
+#[test]
+fn implemented_features_are_declared_and_rejected_when_unknown() {
+    let m = super::load_builtin().expect("builtin manifest");
+    let impl_feats = m.implemented_features();
+    assert!(impl_feats.iter().any(|f| f == "example"));
+    assert!(impl_feats.iter().any(|f| f == "quality"));
+    // Optional modules (task-7) are not implemented yet and must NOT be claimed.
+    assert!(!impl_feats.iter().any(|f| f == "sqlite" || f == "bstats" || f == "gui"));
+
+    let bad = r#"
+schema = 1
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+[features]
+implemented = ["sqllite"]
+[[entries]]
+path = "a.txt"
+"#;
+    let err = load_from_str_with_source(bad, SourceRef::Dir(PathBuf::from("/tmp"))).unwrap_err();
+    assert_eq!(err.code, "template.manifest_invalid");
+    assert!(err.message.contains("sqllite"));
+}
+
+#[test]
+fn folia_with_paper_metadata_warns_instead_of_silently_dropping_support() {
+    let f = fixture();
+    let mut s = f.spec.clone();
+    s.platforms = vec!["folia".to_string()];
+    s.metadata = MetadataFormat::PaperPluginYml;
+    let resolved = resolved_for(&s);
+    let plan = build_plan(&f.manifest, &s, &resolved).unwrap();
+    assert!(
+        plan.warnings.iter().any(|w| w.contains("folia-supported")),
+        "warnings: {:?}",
+        plan.warnings
+    );
+    // Not a skip: the warning is about semantics, nothing was conditionally dropped.
+    assert!(!plan.skipped.iter().any(|w| w.contains("folia-supported")));
+
+    // plugin.yml path must stay quiet.
+    let mut s2 = f.spec.clone();
+    s2.platforms = vec!["folia".to_string()];
+    let resolved2 = resolved_for(&s2);
+    let plan2 = build_plan(&f.manifest, &s2, &resolved2).unwrap();
+    assert!(!plan2.warnings.iter().any(|w| w.contains("folia-supported")));
 }
 
 #[test]
@@ -841,12 +952,9 @@ fn builtin_consumed_vars_diagnostic() {
     let spec = spec(&["paper", "bukkit", "velocity"]);
     let resolved = resolved_for(&spec);
     let (ctx, _) = vars::build_context(&spec, &resolved, &BTreeMap::new()).unwrap();
-    let platforms: Vec<String> = ctx["platforms"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|v| v.as_str().map(str::to_string))
-        .collect();
+    // Mirror A4: the footprint spans every platform, not just the selected ones.
+    let platforms: Vec<String> = crate::types::PLATFORMS.iter().map(|s| s.to_string()).collect();
+    let _ = &ctx;
 
     let mut raw: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut switches: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();

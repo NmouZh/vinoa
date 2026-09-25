@@ -30,3 +30,12 @@ subprojects {
     }
 {% endif %}
 }
+{% if cap_coverage %}
+
+// One entry point for coverage: runs the JaCoCo report of every module that has one.
+tasks.register("coverageReport") {
+    description = "Runs the JaCoCo report of every module."
+    group = "verification"
+    dependsOn(subprojects.map { sub -> sub.tasks.matching { task -> task.name == "jacocoTestReport" } })
+}
+{% endif %}

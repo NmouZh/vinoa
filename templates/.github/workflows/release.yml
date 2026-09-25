@@ -1,0 +1,35 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up the JDK required by the generated modules
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '{{ javaTargetMax }}'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build and check
+        run: ./gradlew build --no-daemon --stacktrace
+      - name: Collect the plugin jars
+        run: |
+          mkdir -p dist
+          find platforms -path '*/build/libs/*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' -exec cp {} dist/ \;
+          ls -l dist
+      - name: Publish the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.jar
+          generate_release_notes: true
+          # The tag push needs contents: write, which is granted above.
