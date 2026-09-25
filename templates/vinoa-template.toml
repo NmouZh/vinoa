@@ -1,25 +1,54 @@
-# vinoa 内置模板集清单（CONTRACT FILE — 由 lead 维护；engine-dev 解析，content-dev 遵守）
+# vinoa 内置模板集清单（OWNER: engine-dev）。schema 见 docs/spec/vinoa-cli.md §7.8。
+#
+# 约定（engine 与 templates-dev 的接口，改动前先通知对方）：
+#   path      = 生成物目标路径，会被渲染；只允许 {{ projectName }} / {{ pluginName }} /
+#               {{ packagePath }} / {{ platform }} 四个变量（§7.4）。
+#   template  = templates/ 下的源文件相对路径，字面量（禁止 {{ }}）；可省略（源 = path）。
+#               foreach 条目必填，其中 `_p_` 段替换成当前平台 id。
+#   render    = "template"（默认，minijinja 渲染）| "copy"（只复制，二进制安全）
+#   when      = §7.5 条件表达式（开关 cap_*/has_*/is_* + 变量比较 + any_of/all_of/not）
+#   foreach   = "platforms"（每个已启用平台一次；作用域见 vars::loop_scope）
+#   mode      = 八进制权限，如 "755"
+#   vars      = 模板实际消费的生成期变量集合；A4 做双向核对（不多不少）
 schema = 1
+id = "vinoa/builtin-gradle-v1"
+template_version = "1.0.0"
 min_cli_version = "0.1.0"
 name = "builtin"
 
 vars = [
-  "projectName", "pluginName", "pluginId", "packageName", "packagePath",
-  "mainClass", "mcVersion", "gradleVersion", "language", "license", "author",
+  "apiModules", "apiVersions", "authors", "checkstyleLegacyVersion",
+  "checkstyleModernVersion", "commandName", "coreJavaTarget", "gradleVersion",
+  "javaTargetMax", "javaTargets", "junitLegacyVersion", "junitModernVersion",
+  "license", "mcVersion", "packageName", "packagePath", "permissionNode",
+  "pluginDescription", "pluginId", "pluginName", "pluginYmlApiVersion",
+  "platforms", "projectName", "projectVersion", "runPaperVersion", "shadowVersion",
 ]
 
-# 常量文件（不随平台展开）
+# 开关名 -> §7.5 表达式。内置开关（cap_*/has_*/is_*）由 Rust 侧自动折叠；
+# 这里只声明需要额外组合的（v1 暂无）。
+
+# ---------------------------------------------------------------------------
+# 根文件
+# ---------------------------------------------------------------------------
 [[entries]]
 path = "settings.gradle.kts"
-render = "template"
 
 [[entries]]
 path = "build.gradle.kts"
-render = "template"
+
+[[entries]]
+path = "gradle.properties"
 
 [[entries]]
 path = "gradle/libs.versions.toml"
-render = "template"
+
+[[entries]]
+path = "gradle/wrapper/gradle-wrapper.properties"
+
+[[entries]]
+path = "gradle/wrapper/gradle-wrapper.jar"
+render = "copy"
 
 [[entries]]
 path = "gradlew"
@@ -31,38 +60,172 @@ path = "gradlew.bat"
 render = "copy"
 
 [[entries]]
-path = "gradle/wrapper/gradle-wrapper.properties"
-render = "template"
-
-[[entries]]
 path = ".gitignore"
 render = "copy"
+when = "cap_git"
+
+[[entries]]
+path = ".gitattributes"
+render = "copy"
+when = "cap_git"
 
 [[entries]]
 path = "README.md"
-render = "template"
 
+[[entries]]
+path = "README.en.md"
+when = "cap_dual_lang"
+
+[[entries]]
+path = "CHANGELOG.md"
+
+# Apache-2.0 英文全文，不翻译（§9.6）。
 [[entries]]
 path = "LICENSE"
 render = "copy"
 
-# 共享模块
+[[entries]]
+path = "config/checkstyle/checkstyle.xml"
+render = "copy"
+when = "cap_quality"
+
+[[entries]]
+path = "config/checkstyle/suppressions.xml"
+render = "copy"
+when = "cap_quality"
+
+[[entries]]
+path = ".github/workflows/build.yml"
+when = "cap_quality"
+
+# ---------------------------------------------------------------------------
+# core（平台无关；R1/R5）
+# ---------------------------------------------------------------------------
 [[entries]]
 path = "core/build.gradle.kts"
-render = "template"
 
 [[entries]]
+template = "core/java/ExampleService.java"
 path = "core/src/main/java/{{ packagePath }}/ExampleService.java"
-render = "template"
-when = "has_example"
+when = "cap_example"
 
-# 平台模块（foreach = 每个已启用平台一次）
 [[entries]]
+template = "core/java/command/CommandSpec.java"
+path = "core/src/main/java/{{ packagePath }}/command/CommandSpec.java"
+when = "cap_example"
+
+[[entries]]
+template = "core/java/config/PluginConfig.java"
+path = "core/src/main/java/{{ packagePath }}/config/PluginConfig.java"
+when = "cap_example"
+
+[[entries]]
+template = "core/java/scheduler/Scheduler.java"
+path = "core/src/main/java/{{ packagePath }}/scheduler/Scheduler.java"
+when = "cap_example"
+
+[[entries]]
+template = "core/java/sender/Sender.java"
+path = "core/src/main/java/{{ packagePath }}/sender/Sender.java"
+when = "cap_example"
+
+[[entries]]
+template = "core/java/message/Messages.java"
+path = "core/src/main/java/{{ packagePath }}/message/Messages.java"
+when = "cap_example"
+
+[[entries]]
+template = "core/java/permission/Permissions.java"
+path = "core/src/main/java/{{ packagePath }}/permission/Permissions.java"
+when = "cap_permissions"
+
+[[entries]]
+template = "core/java/test/ExampleServiceTest.java"
+path = "core/src/test/java/{{ packagePath }}/ExampleServiceTest.java"
+when = "cap_quality"
+
+# ---------------------------------------------------------------------------
+# platforms/（foreach = 每个已启用平台一次；R1–R6）
+# ---------------------------------------------------------------------------
+[[entries]]
+template = "platforms/_p_/build.gradle.kts"
 path = "platforms/{{ platform }}/build.gradle.kts"
-render = "template"
+foreach = "platforms"
+
+# R2：入口类文件名与类名同源（{{ pluginName }}.java / class {{ pluginName }}）
+[[entries]]
+template = "platforms/_p_/Main.java"
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/{{ pluginName }}.java"
 foreach = "platforms"
 
 [[entries]]
-path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/{{ pluginName }}Plugin.java"
-render = "template"
+template = "platforms/_p_/Command.java"
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/command/ExampleCommand.java"
+when = "cap_example"
 foreach = "platforms"
+
+[[entries]]
+template = "platforms/_p_/Listener.java"
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/listener/ExampleListener.java"
+when = "cap_example"
+foreach = "platforms"
+
+# R6：plugin.yml 与 paper-plugin.yml 二选一，绝不并列（§9.2）。
+# 服务端平台有 resources/：bukkit / paper / folia（+ bungeecord 只有 plugin.yml）；
+# velocity / sponge / minestom 无 resources（描述符由注解/代码生成）。
+[[entries]]
+template = "platforms/_p_/resources/plugin.yml"
+path = "platforms/{{ platform }}/src/main/resources/plugin.yml"
+when = "all_of(any_of(is_bukkit, is_paper, is_folia, is_bungeecord), not(all_of(any_of(is_paper, is_folia), is_paper_metadata)))"
+foreach = "platforms"
+build_time_vars = ["version"]
+
+[[entries]]
+template = "platforms/_p_/resources/paper-plugin.yml"
+path = "platforms/{{ platform }}/src/main/resources/paper-plugin.yml"
+when = "all_of(any_of(is_paper, is_folia), is_paper_metadata)"
+foreach = "platforms"
+build_time_vars = ["version"]
+
+[[entries]]
+template = "platforms/_p_/resources/config.yml"
+path = "platforms/{{ platform }}/src/main/resources/config.yml"
+when = "any_of(is_bukkit, is_paper, is_folia)"
+foreach = "platforms"
+
+[[entries]]
+template = "platforms/_p_/resources/lang/zh_CN.yml"
+path = "platforms/{{ platform }}/src/main/resources/lang/zh_CN.yml"
+render = "copy"
+when = "all_of(any_of(is_bukkit, is_paper, is_folia), any_of(is_lang_zh, cap_dual_lang))"
+foreach = "platforms"
+
+[[entries]]
+template = "platforms/_p_/resources/lang/en.yml"
+path = "platforms/{{ platform }}/src/main/resources/lang/en.yml"
+render = "copy"
+when = "all_of(any_of(is_bukkit, is_paper, is_folia), any_of(is_lang_en, cap_dual_lang))"
+foreach = "platforms"
+
+[[entries]]
+template = "platforms/_p_/Test.java"
+path = "platforms/{{ platform }}/src/test/java/{{ packagePath }}/{{ platform }}/{{ pluginName }}Test.java"
+when = "cap_quality"
+foreach = "platforms"
+
+# ---------------------------------------------------------------------------
+# 内容级断言（§7.8）：contains[] 自身先渲染，再比对目标文件内容
+# ---------------------------------------------------------------------------
+[[assertions]]
+target = "settings.gradle.kts"
+contains = [
+  'rootProject.name = "{{ projectName }}"',
+  'include("core"',
+]
+
+[[assertions]]
+target = "gradle/libs.versions.toml"
+contains = [
+  'gradle = "{{ gradleVersion }}"',
+  'mc = "{{ mcVersion }}"',
+]

@@ -1,15 +1,21 @@
-//! Template engine: manifest, rendering, plan, assertions (spec §7). OWNER: engine-dev.
+//! Template engine: manifest, rendering, plan, assertions (spec §7).
+//! OWNER: engine-dev.
 pub mod manifest;
 pub mod plan;
 pub mod render;
+pub mod vars;
 
-pub use manifest::TemplateManifest;
-pub use plan::build_plan;
+pub use manifest::{TemplateManifest, load_builtin, load_from, load_from_str, load_from_str_with_source};
+pub use plan::{build_plan, build_plan_with_vars};
+
+#[cfg(test)]
+mod tests;
 
 use crate::error::Result;
 use crate::types::{Plan, ProjectSpec, Resolved};
 
-/// Build the full plan (the only source of truth for both `--dry-run` and execution).
+/// Build the full plan (the only source of truth for both `--dry-run` and
+/// execution).
 pub fn plan(manifest: &TemplateManifest, spec: &ProjectSpec, resolved: &Resolved) -> Result<Plan> {
     plan::build_plan(manifest, spec, resolved)
 }

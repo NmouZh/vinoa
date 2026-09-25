@@ -1,0 +1,5 @@
+# Keep checkout line endings deterministic across Linux, macOS and Windows.
+* text=auto
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary

@@ -1,0 +1,5 @@
+# 由 vinoa 生成：玩家可见消息（简体中文）。
+# {message} / {prefix} / {label} 由代码里的 Messages#format 替换。
+welcome: '{message}'
+broadcast: '{prefix} {message}'
+command-usage: '&e用法: /{label} <message>'

@@ -1,15 +1,448 @@
-# 版本矩阵数据（OWNER: matrix-dev）。schema 见 docs/spec/vinoa-cli.md §6。
+# 版本矩阵数据（OWNER: matrix-dev）。schema 契约见 docs/spec/vinoa-cli.md §6。
+#
+# 数据源（逐条字面抄录，禁止范围推导、禁止在代码/数据里拼接坐标）：
+#   [VM]  docs/research/version-matrix-sources.md §7 66 行机读表（java_min/recommended、
+#         paper/folia 逐版本可用性、sponge_api、paper_api 坐标）、§2.2/§3/§4/§5
+#   [LEG] docs/research/legacy-mc-build-feasibility.md §1.1（spigot-api 1.8.x–1.16.x 完整枚举，
+#         无 1.8.9 制品 → 1.8.9 用 1.8.8）、§2.1–§2.3（Gradle 9.8 可编译到 Java 8）
+#   [PROXY] docs/research/proxy-plugin-project-shape.md §0（velocity-api 4.2.0 / bungeecord-api）
+#
+# 硬规则：
+#   1. 只有明确存在的 (平台, MC 版本) 才进 versions 白名单；不做区间推导。
+#   2. 坐标一律逐条字面写在 coordinate_map/pinned/coordinates 里；resolve 只查表，不拼串。
+#      （1.8.9 → spigot-api:1.8.8-R0.1-SNAPSHOT 就是拼接必然产 404 的证据。）
+#   3. selectable = false 的 MC 版本不作为目标（数据驱动，不写死在代码里）。
 schema = 1
 generated_at = "2026-09-25"
 
 [java]
-"1.8.9"   = { min = 8,  recommended = 8  }
-"1.12.2"  = { min = 8,  recommended = 11 }
-"1.16.5"  = { min = 8,  recommended = 16 }
-"1.17.1"  = { min = 16, recommended = 17 }
-"1.20.6"  = { min = 21, recommended = 21 }
-"1.21.11" = { min = 21, recommended = 21 }
-"26.2"    = { min = 25, recommended = 25 }
+# 全 66 行（Mojang release，1.8.9 → 26.3）。min = Paper Fill `version.java.version.minimum`
+# （工具链事实源）；recommended = Paper docs 推荐值（只用于向导/预检提示文案）。
+# selectable = false：超出 §1 支持窗口（1.8.9 → 26.2）——26.3 上游只有 ALPHA 构建。
+"1.8.9"    = { min = 8, recommended = 8 }
+"1.9"      = { min = 8, recommended = 8 }
+"1.9.1"    = { min = 8, recommended = 8 }
+"1.9.2"    = { min = 8, recommended = 8 }
+"1.9.3"    = { min = 8, recommended = 8 }
+"1.9.4"    = { min = 8, recommended = 8 }
+"1.10"     = { min = 8, recommended = 8 }
+"1.10.1"   = { min = 8, recommended = 8 }
+"1.10.2"   = { min = 8, recommended = 8 }
+"1.11"     = { min = 8, recommended = 8 }
+"1.11.1"   = { min = 8, recommended = 8 }
+"1.11.2"   = { min = 8, recommended = 8 }
+"1.12"     = { min = 8, recommended = 11 }
+"1.12.1"   = { min = 8, recommended = 11 }
+"1.12.2"   = { min = 8, recommended = 11 }
+"1.13"     = { min = 8, recommended = 11 }
+"1.13.1"   = { min = 8, recommended = 11 }
+"1.13.2"   = { min = 8, recommended = 11 }
+"1.14"     = { min = 8, recommended = 11 }
+"1.14.1"   = { min = 8, recommended = 11 }
+"1.14.2"   = { min = 8, recommended = 11 }
+"1.14.3"   = { min = 8, recommended = 11 }
+"1.14.4"   = { min = 8, recommended = 11 }
+"1.15"     = { min = 8, recommended = 11 }
+"1.15.1"   = { min = 8, recommended = 11 }
+"1.15.2"   = { min = 8, recommended = 11 }
+"1.16"     = { min = 8, recommended = 11 }
+"1.16.1"   = { min = 8, recommended = 11 }
+"1.16.2"   = { min = 8, recommended = 11 }
+"1.16.3"   = { min = 8, recommended = 11 }
+"1.16.4"   = { min = 8, recommended = 11 }
+"1.16.5"   = { min = 8, recommended = 16 }
+"1.17"     = { min = 16, recommended = 17 }
+"1.17.1"   = { min = 16, recommended = 17 }
+"1.18"     = { min = 17, recommended = 17 }
+"1.18.1"   = { min = 17, recommended = 17 }
+"1.18.2"   = { min = 17, recommended = 17 }
+"1.19"     = { min = 17, recommended = 17 }
+"1.19.1"   = { min = 17, recommended = 17 }
+"1.19.2"   = { min = 17, recommended = 17 }
+"1.19.3"   = { min = 17, recommended = 17 }
+"1.19.4"   = { min = 17, recommended = 17 }
+"1.20"     = { min = 17, recommended = 21 }
+"1.20.1"   = { min = 17, recommended = 21 }
+"1.20.2"   = { min = 17, recommended = 21 }
+"1.20.3"   = { min = 17, recommended = 21 }
+"1.20.4"   = { min = 17, recommended = 21 }
+"1.20.5"   = { min = 21, recommended = 21 }
+"1.20.6"   = { min = 21, recommended = 21 }
+"1.21"     = { min = 21, recommended = 21 }
+"1.21.1"   = { min = 21, recommended = 21 }
+"1.21.2"   = { min = 21, recommended = 21 }
+"1.21.3"   = { min = 21, recommended = 21 }
+"1.21.4"   = { min = 21, recommended = 21 }
+"1.21.5"   = { min = 21, recommended = 21 }
+"1.21.6"   = { min = 21, recommended = 21 }
+"1.21.7"   = { min = 21, recommended = 21 }
+"1.21.8"   = { min = 21, recommended = 21 }
+"1.21.9"   = { min = 21, recommended = 21 }
+"1.21.10"  = { min = 21, recommended = 21 }
+"1.21.11"  = { min = 21, recommended = 21 }
+"26.1"     = { min = 25, recommended = 25 }
+"26.1.1"   = { min = 25, recommended = 25 }
+"26.1.2"   = { min = 25, recommended = 25 }
+"26.2"     = { min = 25, recommended = 25 }
+"26.3"     = { min = 25, recommended = 25, selectable = false }
+
+[quality]
+# 质量工具版本（canonical key；engine-dev 按同名读取）。
+# *_legacy = 目标 Java 8 时改用的版本（§9.5 硬地板，字节码探测来源见 [LEG §3]）。
+# 两档，不设中间档：Checkstyle/SpotBugs 跑在 **Gradle 的 JVM** 上，而 Gradle 9.8 要求 JVM 17–27；
+# 真正的约束是"能否在 JDK 17 上跑"，不是"目标 Java 几"。13.x 需 Java 21，反而会坑 JDK 17 的用户（lead 裁定）。
+checkstyle = "10.24.0"        # Gradle 9 默认 toolVersion，JDK 17 可跑，可分析 Java 8 源码
+checkstyle_legacy = "9.3"     # 键保留；v1 用不到（见上：不设目标-Java-8 档）
+junit = "6.1.3"                 # [LEG §3.3] JUnit 6 = class major 61 → 需 Java 17
+junit_legacy = "5.14.4"         # [LEG §3.3] 最后一个 Java 8 可加载的 5.x
+spotbugs = "4.10.4"             # [LEG §3.2] 4.10.x 需 Java 11 运行
+spotbugs_legacy = "4.8.6"       # [LEG §3.2] 最后一版能跑在 Java 8 上
 
 [gradle]
-version = "9.8.0"
+version = "9.8.0"               # [VM §5.1] services.gradle.org/versions/current
+run_on_jvm = "17-27"           # [LEG §2.1] Gradle 9.8 运行 Gradle 需 JVM 17–27
+java25_toolchain_min = "9.1.0" # [VM §5.1] Java 25 toolchain 需 Gradle ≥ 9.1.0
+[gradle.shadow]
+version = "9.6.1"                     # [VM §5.2] .module org.gradle.plugin.api-version / jvm.version
+gradle_min = "9.2.0"
+java = 17
+[gradle.run_paper]
+version = "3.1.0"                     # [VM §5.3] marker 3.1.0；同级 run-velocity/run-waterfall 同版本
+gradle_min = "9.7.0"
+java = 17
+[gradle.run_velocity]
+version = "3.1.0"                     # [VM §5.3] 与 run-paper 同一实现 artifact xyz.jpenilla:run-task
+gradle_min = "9.7.0"
+java = 17
+[gradle.paperweight]
+version = "2.0.0-beta.24"             # [VM §5.4] io.papermc.paperweight.userdev，仅 Plugin Portal 有 beta
+gradle_min = "9.7.1"
+java = 21
+
+[thirdparty]
+# 三方坐标并入矩阵，矩阵是唯一写入点（§6.1/R6）。gui 不引三方库：GUI 用纯 Bukkit Inventory 自研。
+# java_min 由 jar 内 class 文件 major 实测（major 52 = Java 8）；
+# 目标模块 Java < java_min 时 resolve_with_features 必须硬报错，绝不生成构建不过的工程。
+placeholderapi = { coordinate = "me.clip:placeholderapi:2.11.6", java_min = 8, scope = "platform" }
+bstats         = { coordinate = "org.bstats:bstats-bukkit:3.2.1", java_min = 8, scope = "platform" }
+sqlite_jdbc    = { coordinate = "org.xerial:sqlite-jdbc:3.53.4.0", java_min = 8, scope = "core" }
+
+[platform.bukkit]
+# 1.8.x 的唯一选择（1.8.9 用 1.8.8 制品）；Java 目标：≤1.16.5 → 8，之后取该版本 java_min（§6.3.4）。
+api = "org.spigotmc:spigot-api"
+java_legacy_until = "1.16.5"
+java_legacy = 8
+# 白名单 = spigot-api 有制品的 MC 版本；1.9.1 / 1.9.3 / 1.10.1 / 裸 1.16 在 [LEG §1.1] 的
+# 完整枚举里不存在，26.3 超出 §1 支持窗口。
+versions = [
+    "1.8.9", "1.9", "1.9.2", "1.9.4", "1.10", "1.10.2", "1.11", "1.11.1", "1.11.2", "1.12",
+    "1.12.1", "1.12.2", "1.13", "1.13.1", "1.13.2", "1.14", "1.14.1", "1.14.2", "1.14.3",
+    "1.14.4", "1.15", "1.15.1", "1.15.2", "1.16.1", "1.16.2", "1.16.3", "1.16.4", "1.16.5",
+    "1.17", "1.17.1", "1.18", "1.18.1", "1.18.2", "1.19", "1.19.1", "1.19.2", "1.19.3", "1.19.4",
+    "1.20", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.5", "1.20.6", "1.21", "1.21.1",
+    "1.21.2", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10",
+    "1.21.11", "26.1", "26.1.1", "26.1.2", "26.2"
+]
+[platform.bukkit.coordinate_map]
+# 1.8.9 → 1.8.8-R0.1-SNAPSHOT 是唯一例外（MC 1.8.9 无独立 API 制品，[LEG §1.1]）。
+"1.8.9"    = "org.spigotmc:spigot-api:1.8.8-R0.1-SNAPSHOT"
+"1.9"      = "org.spigotmc:spigot-api:1.9-R0.1-SNAPSHOT"
+"1.9.2"    = "org.spigotmc:spigot-api:1.9.2-R0.1-SNAPSHOT"
+"1.9.4"    = "org.spigotmc:spigot-api:1.9.4-R0.1-SNAPSHOT"
+"1.10"     = "org.spigotmc:spigot-api:1.10-R0.1-SNAPSHOT"
+"1.10.2"   = "org.spigotmc:spigot-api:1.10.2-R0.1-SNAPSHOT"
+"1.11"     = "org.spigotmc:spigot-api:1.11-R0.1-SNAPSHOT"
+"1.11.1"   = "org.spigotmc:spigot-api:1.11.1-R0.1-SNAPSHOT"
+"1.11.2"   = "org.spigotmc:spigot-api:1.11.2-R0.1-SNAPSHOT"
+"1.12"     = "org.spigotmc:spigot-api:1.12-R0.1-SNAPSHOT"
+"1.12.1"   = "org.spigotmc:spigot-api:1.12.1-R0.1-SNAPSHOT"
+"1.12.2"   = "org.spigotmc:spigot-api:1.12.2-R0.1-SNAPSHOT"
+"1.13"     = "org.spigotmc:spigot-api:1.13-R0.1-SNAPSHOT"
+"1.13.1"   = "org.spigotmc:spigot-api:1.13.1-R0.1-SNAPSHOT"
+"1.13.2"   = "org.spigotmc:spigot-api:1.13.2-R0.1-SNAPSHOT"
+"1.14"     = "org.spigotmc:spigot-api:1.14-R0.1-SNAPSHOT"
+"1.14.1"   = "org.spigotmc:spigot-api:1.14.1-R0.1-SNAPSHOT"
+"1.14.2"   = "org.spigotmc:spigot-api:1.14.2-R0.1-SNAPSHOT"
+"1.14.3"   = "org.spigotmc:spigot-api:1.14.3-R0.1-SNAPSHOT"
+"1.14.4"   = "org.spigotmc:spigot-api:1.14.4-R0.1-SNAPSHOT"
+"1.15"     = "org.spigotmc:spigot-api:1.15-R0.1-SNAPSHOT"
+"1.15.1"   = "org.spigotmc:spigot-api:1.15.1-R0.1-SNAPSHOT"
+"1.15.2"   = "org.spigotmc:spigot-api:1.15.2-R0.1-SNAPSHOT"
+"1.16.1"   = "org.spigotmc:spigot-api:1.16.1-R0.1-SNAPSHOT"
+"1.16.2"   = "org.spigotmc:spigot-api:1.16.2-R0.1-SNAPSHOT"
+"1.16.3"   = "org.spigotmc:spigot-api:1.16.3-R0.1-SNAPSHOT"
+"1.16.4"   = "org.spigotmc:spigot-api:1.16.4-R0.1-SNAPSHOT"
+"1.16.5"   = "org.spigotmc:spigot-api:1.16.5-R0.1-SNAPSHOT"
+"1.17"     = "org.spigotmc:spigot-api:1.17-R0.1-SNAPSHOT"
+"1.17.1"   = "org.spigotmc:spigot-api:1.17.1-R0.1-SNAPSHOT"
+"1.18"     = "org.spigotmc:spigot-api:1.18-R0.1-SNAPSHOT"
+"1.18.1"   = "org.spigotmc:spigot-api:1.18.1-R0.1-SNAPSHOT"
+"1.18.2"   = "org.spigotmc:spigot-api:1.18.2-R0.1-SNAPSHOT"
+"1.19"     = "org.spigotmc:spigot-api:1.19-R0.1-SNAPSHOT"
+"1.19.1"   = "org.spigotmc:spigot-api:1.19.1-R0.1-SNAPSHOT"
+"1.19.2"   = "org.spigotmc:spigot-api:1.19.2-R0.1-SNAPSHOT"
+"1.19.3"   = "org.spigotmc:spigot-api:1.19.3-R0.1-SNAPSHOT"
+"1.19.4"   = "org.spigotmc:spigot-api:1.19.4-R0.1-SNAPSHOT"
+"1.20"     = "org.spigotmc:spigot-api:1.20-R0.1-SNAPSHOT"
+"1.20.1"   = "org.spigotmc:spigot-api:1.20.1-R0.1-SNAPSHOT"
+"1.20.2"   = "org.spigotmc:spigot-api:1.20.2-R0.1-SNAPSHOT"
+"1.20.3"   = "org.spigotmc:spigot-api:1.20.3-R0.1-SNAPSHOT"
+"1.20.4"   = "org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT"
+"1.20.5"   = "org.spigotmc:spigot-api:1.20.5-R0.1-SNAPSHOT"
+"1.20.6"   = "org.spigotmc:spigot-api:1.20.6-R0.1-SNAPSHOT"
+"1.21"     = "org.spigotmc:spigot-api:1.21-R0.1-SNAPSHOT"
+"1.21.1"   = "org.spigotmc:spigot-api:1.21.1-R0.1-SNAPSHOT"
+"1.21.2"   = "org.spigotmc:spigot-api:1.21.2-R0.1-SNAPSHOT"
+"1.21.3"   = "org.spigotmc:spigot-api:1.21.3-R0.1-SNAPSHOT"
+"1.21.4"   = "org.spigotmc:spigot-api:1.21.4-R0.1-SNAPSHOT"
+"1.21.5"   = "org.spigotmc:spigot-api:1.21.5-R0.1-SNAPSHOT"
+"1.21.6"   = "org.spigotmc:spigot-api:1.21.6-R0.1-SNAPSHOT"
+"1.21.7"   = "org.spigotmc:spigot-api:1.21.7-R0.1-SNAPSHOT"
+"1.21.8"   = "org.spigotmc:spigot-api:1.21.8-R0.1-SNAPSHOT"
+"1.21.9"   = "org.spigotmc:spigot-api:1.21.9-R0.1-SNAPSHOT"
+"1.21.10"  = "org.spigotmc:spigot-api:1.21.10-R0.1-SNAPSHOT"
+"1.21.11"  = "org.spigotmc:spigot-api:1.21.11-R0.1-SNAPSHOT"
+"26.1"     = "org.spigotmc:spigot-api:26.1-R0.1-SNAPSHOT"
+"26.1.1"   = "org.spigotmc:spigot-api:26.1.1-R0.1-SNAPSHOT"
+"26.1.2"   = "org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT"
+"26.2"     = "org.spigotmc:spigot-api:26.2-R0.1-SNAPSHOT"
+
+[platform.paper]
+# 1.8.x 完全没有 Paper（最早 1.9.4；1.8.9 无 Paper server 也无 paper-api 制品）。
+# 26.3 只有 ALPHA 构建（39 ALPHA / 0 STABLE）→ 不进白名单；该版本另行 selectable = false。
+api = "io.papermc.paper:paper-api"
+legacy_api = "com.destroystokyo.paper:paper-api"   # 1.9.4–1.16.5
+legacy_namespace_until = "1.16.5"                 # ≤1.16.5 用 com.destroystokyo.paper 命名空间
+legacy_version_until = "1.21.11"                  # ≤1.21.11 用 {MC}-R0.1-SNAPSHOT；26.1+ 用 {MC}.build.+
+versions = [
+    "1.9.4", "1.10.2", "1.11.2", "1.12", "1.12.1", "1.12.2", "1.13", "1.13.1", "1.13.2", "1.14",
+    "1.14.1", "1.14.2", "1.14.3", "1.14.4", "1.15", "1.15.1", "1.15.2", "1.16.1", "1.16.2",
+    "1.16.3", "1.16.4", "1.16.5", "1.17", "1.17.1", "1.18", "1.18.1", "1.18.2", "1.19", "1.19.1",
+    "1.19.2", "1.19.3", "1.19.4", "1.20", "1.20.1", "1.20.2", "1.20.4", "1.20.5", "1.20.6",
+    "1.21", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9",
+    "1.21.10", "1.21.11", "26.1.1", "26.1.2", "26.2"
+]
+[platform.paper.coordinate_map]
+# 逐条来自 [VM §7] 的 paper_api 列（含 paper_builds=NO 但有制品的三行：1.11 / 1.11.1 / 1.20.3）。
+"1.9.4"    = "com.destroystokyo.paper:paper-api:1.9.4-R0.1-SNAPSHOT"
+"1.10.2"   = "com.destroystokyo.paper:paper-api:1.10.2-R0.1-SNAPSHOT"
+"1.11"     = "com.destroystokyo.paper:paper-api:1.11-R0.1-SNAPSHOT"
+"1.11.1"   = "com.destroystokyo.paper:paper-api:1.11.1-R0.1-SNAPSHOT"
+"1.11.2"   = "com.destroystokyo.paper:paper-api:1.11.2-R0.1-SNAPSHOT"
+"1.12"     = "com.destroystokyo.paper:paper-api:1.12-R0.1-SNAPSHOT"
+"1.12.1"   = "com.destroystokyo.paper:paper-api:1.12.1-R0.1-SNAPSHOT"
+"1.12.2"   = "com.destroystokyo.paper:paper-api:1.12.2-R0.1-SNAPSHOT"
+"1.13"     = "com.destroystokyo.paper:paper-api:1.13-R0.1-SNAPSHOT"
+"1.13.1"   = "com.destroystokyo.paper:paper-api:1.13.1-R0.1-SNAPSHOT"
+"1.13.2"   = "com.destroystokyo.paper:paper-api:1.13.2-R0.1-SNAPSHOT"
+"1.14"     = "com.destroystokyo.paper:paper-api:1.14-R0.1-SNAPSHOT"
+"1.14.1"   = "com.destroystokyo.paper:paper-api:1.14.1-R0.1-SNAPSHOT"
+"1.14.2"   = "com.destroystokyo.paper:paper-api:1.14.2-R0.1-SNAPSHOT"
+"1.14.3"   = "com.destroystokyo.paper:paper-api:1.14.3-R0.1-SNAPSHOT"
+"1.14.4"   = "com.destroystokyo.paper:paper-api:1.14.4-R0.1-SNAPSHOT"
+"1.15"     = "com.destroystokyo.paper:paper-api:1.15-R0.1-SNAPSHOT"
+"1.15.1"   = "com.destroystokyo.paper:paper-api:1.15.1-R0.1-SNAPSHOT"
+"1.15.2"   = "com.destroystokyo.paper:paper-api:1.15.2-R0.1-SNAPSHOT"
+"1.16.1"   = "com.destroystokyo.paper:paper-api:1.16.1-R0.1-SNAPSHOT"
+"1.16.2"   = "com.destroystokyo.paper:paper-api:1.16.2-R0.1-SNAPSHOT"
+"1.16.3"   = "com.destroystokyo.paper:paper-api:1.16.3-R0.1-SNAPSHOT"
+"1.16.4"   = "com.destroystokyo.paper:paper-api:1.16.4-R0.1-SNAPSHOT"
+"1.16.5"   = "com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT"
+"1.17"     = "io.papermc.paper:paper-api:1.17-R0.1-SNAPSHOT"
+"1.17.1"   = "io.papermc.paper:paper-api:1.17.1-R0.1-SNAPSHOT"
+"1.18"     = "io.papermc.paper:paper-api:1.18-R0.1-SNAPSHOT"
+"1.18.1"   = "io.papermc.paper:paper-api:1.18.1-R0.1-SNAPSHOT"
+"1.18.2"   = "io.papermc.paper:paper-api:1.18.2-R0.1-SNAPSHOT"
+"1.19"     = "io.papermc.paper:paper-api:1.19-R0.1-SNAPSHOT"
+"1.19.1"   = "io.papermc.paper:paper-api:1.19.1-R0.1-SNAPSHOT"
+"1.19.2"   = "io.papermc.paper:paper-api:1.19.2-R0.1-SNAPSHOT"
+"1.19.3"   = "io.papermc.paper:paper-api:1.19.3-R0.1-SNAPSHOT"
+"1.19.4"   = "io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT"
+"1.20"     = "io.papermc.paper:paper-api:1.20-R0.1-SNAPSHOT"
+"1.20.1"   = "io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT"
+"1.20.2"   = "io.papermc.paper:paper-api:1.20.2-R0.1-SNAPSHOT"
+"1.20.3"   = "io.papermc.paper:paper-api:1.20.3-R0.1-SNAPSHOT"
+"1.20.4"   = "io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT"
+"1.20.5"   = "io.papermc.paper:paper-api:1.20.5-R0.1-SNAPSHOT"
+"1.20.6"   = "io.papermc.paper:paper-api:1.20.6-R0.1-SNAPSHOT"
+"1.21"     = "io.papermc.paper:paper-api:1.21-R0.1-SNAPSHOT"
+"1.21.1"   = "io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT"
+"1.21.3"   = "io.papermc.paper:paper-api:1.21.3-R0.1-SNAPSHOT"
+"1.21.4"   = "io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT"
+"1.21.5"   = "io.papermc.paper:paper-api:1.21.5-R0.1-SNAPSHOT"
+"1.21.6"   = "io.papermc.paper:paper-api:1.21.6-R0.1-SNAPSHOT"
+"1.21.7"   = "io.papermc.paper:paper-api:1.21.7-R0.1-SNAPSHOT"
+"1.21.8"   = "io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT"
+"1.21.9"   = "io.papermc.paper:paper-api:1.21.9-R0.1-SNAPSHOT"
+"1.21.10"  = "io.papermc.paper:paper-api:1.21.10-R0.1-SNAPSHOT"
+"1.21.11"  = "io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT"
+"26.1.1"   = "io.papermc.paper:paper-api:26.1.1.build.+"
+"26.1.2"   = "io.papermc.paper:paper-api:26.1.2.build.+"
+"26.2"     = "io.papermc.paper:paper-api:26.2.build.+"
+[platform.paper.pinned]
+# 26.2 的已知良好构建（[VM §2.1] {VERSION}.build.{N}-{channel}）；有 pinned 时优先于 coordinate_map。
+"26.2"     = "io.papermc.paper:paper-api:26.2.build.129-stable"
+
+[platform.folia]
+# 区域化线程（regionised）服务端；硬下界 1.19.4，之后仍有缺口（[VM §4.1/§6.3]）。B 级（experimental）。
+api = "io.papermc.paper:paper-api"
+min_version = "1.19.4"
+experimental = true
+versions = [
+    "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.4", "1.21.5", "1.21.6", "1.21.8",
+    "1.21.11", "26.1.2", "26.2"
+]
+[platform.folia.coordinate_map]
+# Folia 插件编译用 paper-api（与 paper 同制品）；逐条来自 [VM §7] 的 paper_api 列。
+"1.19.4"   = "io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT"
+"1.20.1"   = "io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT"
+"1.20.2"   = "io.papermc.paper:paper-api:1.20.2-R0.1-SNAPSHOT"
+"1.20.4"   = "io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT"
+"1.20.6"   = "io.papermc.paper:paper-api:1.20.6-R0.1-SNAPSHOT"
+"1.21.4"   = "io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT"
+"1.21.5"   = "io.papermc.paper:paper-api:1.21.5-R0.1-SNAPSHOT"
+"1.21.6"   = "io.papermc.paper:paper-api:1.21.6-R0.1-SNAPSHOT"
+"1.21.8"   = "io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT"
+"1.21.11"  = "io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT"
+"26.1.2"   = "io.papermc.paper:paper-api:26.1.2.build.+"
+"26.2"     = "io.papermc.paper:paper-api:26.2.build.129-stable"
+
+[platform.velocity]
+# 代理端：协议范围，不锁 MC 版本（§6.3.5：恒可选）。4.x 需 Java 25（[VM §4.3][PROXY §0]）。
+api = "com.velocitypowered:velocity-api"
+model = "protocol"
+protocol_min = "1.7.2"            # ProtocolVersion.MINIMUM_VERSION（3.x/4.x 同）
+java = 25
+default_api = "com.velocitypowered:velocity-api:4.2.0"   # Fill velocity 4.2.0 = STABLE
+[platform.velocity.protocol_max]
+# 每个 Velocity 线支持的协议上限（§6.1）；4.2.0 的枚举末值是 26.3，但 §1 支持窗口止于 26.2。
+"4.2.0" = "26.2"
+
+[platform.bungeecord]
+# 代理端：大颗粒版本（major only，无逐 patch 制品，[VM §4.2/§6.5]）。
+# 默认 release 线 1.21-R0.4（Java 8，A7 行）；快照线 26.1-R0.1-SNAPSHOT（Java 17）为可选。
+api = "net.md-5:bungeecord-api"
+model = "major-grain"
+default = "1.21-R0.4"
+[platform.bungeecord.coordinates]
+"1.21-R0.4"           = { api = "net.md-5:bungeecord-api:1.21-R0.4",           java = 8 }
+"26.1-R0.1-SNAPSHOT"  = { api = "net.md-5:bungeecord-api:26.1-R0.1-SNAPSHOT",  java = 17 }
+
+[platform.minestom]
+# 只有 4 个版本（[VM §4.5/§6.7]）；版本串是 dated snapshot，逐条字面写出。B 级（experimental）。
+api = "net.minestom:minestom"
+java = 25
+experimental = true
+versions = ["1.21.11", "26.1.1", "26.1.2", "26.2"]
+[platform.minestom.coordinate_map]
+"1.21.11"  = "net.minestom:minestom:2026.05.11-1.21.11"
+"26.1.1"   = "net.minestom:minestom:2026.05.17b-26.1.1"
+"26.1.2"   = "net.minestom:minestom:2026.06.02-26.1.2"
+"26.2"     = "net.minestom:minestom:2026.09.12-26.2"   # <release>（[VM §4.5]）
+
+[platform.sponge]
+# SpongeAPI 线（[VM §4.4/§7] sponge_api 列）；缺口：无 1.13 / 1.14 / 裸 1.18 / 1.19 / 1.19.1
+# / 1.20.3 / 1.20.5（§6.6）。B 级（experimental）。
+api = "org.spongepowered:spongeapi"
+experimental = true
+versions = [
+    "1.8.9", "1.9", "1.9.4", "1.10.2", "1.11", "1.11.2", "1.12", "1.12.1", "1.12.2", "1.15.2",
+    "1.16.4", "1.16.5", "1.17", "1.17.1", "1.18.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4",
+    "1.20", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21", "1.21.1", "1.21.2", "1.21.3",
+    "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1",
+    "26.1.1", "26.1.2", "26.2"
+]
+[platform.sponge.api_versions]
+# MC 版本 → SpongeAPI 线（§6.1 要求的字段）。
+"1.8.9"    = "4.2.0"
+"1.9"      = "5.0.0"
+"1.9.4"    = "5.0.0"
+"1.10.2"   = "5.2.0"
+"1.11"     = "6.0.0"
+"1.11.2"   = "6.1.0"
+"1.12"     = "7.0.0"
+"1.12.1"   = "7.0.0"
+"1.12.2"   = "7.4.8"
+"1.15.2"   = "8.0.0"
+"1.16.4"   = "8.0.0"
+"1.16.5"   = "8.2.1"
+"1.17"     = "9.0.0"
+"1.17.1"   = "9.0.0"
+"1.18.1"   = "9.0.0"
+"1.18.2"   = "9.0.0"
+"1.19.2"   = "10.0.0"
+"1.19.3"   = "10.0.0"
+"1.19.4"   = "10.0.0"
+"1.20"     = "11.0.0"
+"1.20.1"   = "11.0.0"
+"1.20.2"   = "11.0.0"
+"1.20.4"   = "11.0.0"
+"1.20.6"   = "11.0.1"
+"1.21"     = "12.0.0"
+"1.21.1"   = "12.0.4"
+"1.21.2"   = "13.0.0"
+"1.21.3"   = "13.0.1"
+"1.21.4"   = "14.0.1"
+"1.21.5"   = "15.0.1"
+"1.21.6"   = "16.0.0"
+"1.21.7"   = "16.0.0"
+"1.21.8"   = "16.0.1"
+"1.21.9"   = "17.0.0"
+"1.21.10"  = "17.0.1"
+"1.21.11"  = "18.0.0"
+"26.1"     = "19.0.0"
+"26.1.1"   = "19.0.0"
+"26.1.2"   = "19.0.0"
+"26.2"     = "20.0.0"
+[platform.sponge.coordinates]
+# 坐标字面写出（api + 该 MC 的 SpongeAPI 线）；java = 该 MC 版本的 java_min。
+# 实测锚点：SpongeAPI 8.2.1 → 8（§8.1）、17.0.0 字节码 major 65 → 21（[VM §4.4]）、20.0.0 → 25（§8.1）；
+# 三个锚点与 `该 MC 版本 java_min` 完全一致，其余线同规则逐条显式写入（不做运行时推导）。
+# 编译坐标不能直接取 §7 的线值：若干线（4.2.0 / 5.2.0 / 6.1.0 / 7.4.8 / 8.2.1 /
+# 11.0.1 / 12.0.4 / 13.0.1 / 14.0.1 / 15.0.1 / 16.0.1 / 17.0.1 / 18–20.0.0）从未作为
+# org.spongepowered:spongeapi 制品发布。选取规则（primary source = repo.spongepowered.org
+# maven-metadata，2026-09-25 实测 74 个版本；全部经 HTTP 200 复核）：
+#   ① 该线有 release → 用它；② 否则该线有 -SNAPSHOT → 用它；
+#   ③ 否则取同 major.minor、版本号 ≤ 该线的最高 release（其次最高 snapshot）。
+# 下方标 ← 的 17 条与 §7 线值不同；api_versions 保留 §7 的线值（那是 SpongeVanilla 构建内嵌的 API 线）。
+"1.8.9"    = { api = "org.spongepowered:spongeapi:4.2.0-SNAPSHOT", java = 8 }   # ← §7 线值 4.2.0（line-snapshot）
+"1.9"      = { api = "org.spongepowered:spongeapi:5.0.0", java = 8 }
+"1.9.4"    = { api = "org.spongepowered:spongeapi:5.0.0", java = 8 }
+"1.10.2"   = { api = "org.spongepowered:spongeapi:5.2.0-SNAPSHOT", java = 8 }   # ← §7 线值 5.2.0（line-snapshot）
+"1.11"     = { api = "org.spongepowered:spongeapi:6.0.0", java = 8 }
+"1.11.2"   = { api = "org.spongepowered:spongeapi:6.1.0-SNAPSHOT", java = 8 }   # ← §7 线值 6.1.0（line-snapshot）
+"1.12"     = { api = "org.spongepowered:spongeapi:7.0.0", java = 8 }
+"1.12.1"   = { api = "org.spongepowered:spongeapi:7.0.0", java = 8 }
+"1.12.2"   = { api = "org.spongepowered:spongeapi:7.4.0", java = 8 }   # ← §7 线值 7.4.8（nearest-release）
+"1.15.2"   = { api = "org.spongepowered:spongeapi:8.0.0", java = 8 }
+"1.16.4"   = { api = "org.spongepowered:spongeapi:8.0.0", java = 8 }
+"1.16.5"   = { api = "org.spongepowered:spongeapi:8.2.0", java = 8 }   # ← §7 线值 8.2.1（nearest-release）
+"1.17"     = { api = "org.spongepowered:spongeapi:9.0.0", java = 16 }
+"1.17.1"   = { api = "org.spongepowered:spongeapi:9.0.0", java = 16 }
+"1.18.1"   = { api = "org.spongepowered:spongeapi:9.0.0", java = 17 }
+"1.18.2"   = { api = "org.spongepowered:spongeapi:9.0.0", java = 17 }
+"1.19.2"   = { api = "org.spongepowered:spongeapi:10.0.0", java = 17 }
+"1.19.3"   = { api = "org.spongepowered:spongeapi:10.0.0", java = 17 }
+"1.19.4"   = { api = "org.spongepowered:spongeapi:10.0.0", java = 17 }
+"1.20"     = { api = "org.spongepowered:spongeapi:11.0.0", java = 17 }
+"1.20.1"   = { api = "org.spongepowered:spongeapi:11.0.0", java = 17 }
+"1.20.2"   = { api = "org.spongepowered:spongeapi:11.0.0", java = 17 }
+"1.20.4"   = { api = "org.spongepowered:spongeapi:11.0.0", java = 17 }
+"1.20.6"   = { api = "org.spongepowered:spongeapi:11.0.0", java = 21 }   # ← §7 线值 11.0.1（nearest-release）
+"1.21"     = { api = "org.spongepowered:spongeapi:12.0.0", java = 21 }
+"1.21.1"   = { api = "org.spongepowered:spongeapi:12.0.0", java = 21 }   # ← §7 线值 12.0.4（nearest-release）
+"1.21.2"   = { api = "org.spongepowered:spongeapi:13.0.0", java = 21 }
+"1.21.3"   = { api = "org.spongepowered:spongeapi:13.0.0", java = 21 }   # ← §7 线值 13.0.1（nearest-release）
+"1.21.4"   = { api = "org.spongepowered:spongeapi:14.0.0", java = 21 }   # ← §7 线值 14.0.1（nearest-release）
+"1.21.5"   = { api = "org.spongepowered:spongeapi:15.0.0", java = 21 }   # ← §7 线值 15.0.1（nearest-release）
+"1.21.6"   = { api = "org.spongepowered:spongeapi:16.0.0", java = 21 }
+"1.21.7"   = { api = "org.spongepowered:spongeapi:16.0.0", java = 21 }
+"1.21.8"   = { api = "org.spongepowered:spongeapi:16.0.0", java = 21 }   # ← §7 线值 16.0.1（nearest-release）
+"1.21.9"   = { api = "org.spongepowered:spongeapi:17.0.0", java = 21 }
+"1.21.10"  = { api = "org.spongepowered:spongeapi:17.0.0", java = 21 }   # ← §7 线值 17.0.1（nearest-release）
+"1.21.11"  = { api = "org.spongepowered:spongeapi:18.0.0-SNAPSHOT", java = 21 }   # ← §7 线值 18.0.0（line-snapshot）
+"26.1"     = { api = "org.spongepowered:spongeapi:19.0.0-SNAPSHOT", java = 25 }   # ← §7 线值 19.0.0（line-snapshot）
+"26.1.1"   = { api = "org.spongepowered:spongeapi:19.0.0-SNAPSHOT", java = 25 }   # ← §7 线值 19.0.0（line-snapshot）
+"26.1.2"   = { api = "org.spongepowered:spongeapi:19.0.0-SNAPSHOT", java = 25 }   # ← §7 线值 19.0.0（line-snapshot）
+"26.2"     = { api = "org.spongepowered:spongeapi:20.0.0-SNAPSHOT", java = 25 }   # ← §7 线值 20.0.0（line-snapshot）
+

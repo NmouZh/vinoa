@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  Shared Checkstyle rules for every module of this project.
+  The rule set is deliberately small so that it can be fed to both the legacy Checkstyle 9.x
+  line (Java 8 targets) and the modern 13.x line.
+-->
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+    <!-- suppressions.xml lives next to this file; Gradle injects config_loc. -->
+    <module name="SuppressionFilter">
+        <property name="file" value="${config_loc}/suppressions.xml"/>
+        <property name="optional" value="false"/>
+    </module>
+
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+
+    <module name="NewlineAtEndOfFile">
+        <property name="lineSeparator" value="lf"/>
+    </module>
+
+    <module name="LineLength">
+        <property name="max" value="120"/>
+        <property name="ignorePattern" value="^import .*"/>
+    </module>
+
+    <module name="RegexpSingleline">
+        <property name="format" value="[ \t]+$"/>
+        <property name="message" value="Trailing whitespace is not allowed."/>
+    </module>
+
+    <module name="TreeWalker">
+        <!-- The core module is platform-independent: server APIs are banned there. -->
+        <module name="IllegalImport">
+            <property name="illegalPkgs" value="org.bukkit, io.papermc, com.velocitypowered, net.md_5"/>
+        </module>
+        <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
+        <module name="AvoidStarImport"/>
+        <module name="NeedBraces"/>
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+        </module>
+        <module name="OneStatementPerLine"/>
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+    </module>
+</module>

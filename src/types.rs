@@ -73,6 +73,12 @@ pub struct ProjectSpec {
     pub license: String,
     pub features: FeatureSet,
     pub quality: QualitySet,
+    /// `--no-example`: generate the sample command/listener/service at all.
+    pub example: bool,
+    /// `--no-permissions`: emit permission declarations + constants class.
+    pub permissions: bool,
+    /// Reserved for a future `--website`; templates must handle `None`.
+    pub website: Option<String>,
     pub git: bool,
     pub download_jdk: bool,
     pub bstats_id: Option<String>,
@@ -108,6 +114,12 @@ pub struct Resolved {
     pub core_java_target: u8,
     pub platforms: BTreeMap<String, PlatformPlan>,
     pub thirdparty: BTreeMap<String, String>,
+    /// checkstyle / checkstyle_legacy / junit / junit_legacy / spotbugs / spotbugs_legacy
+    #[serde(default)]
+    pub quality: BTreeMap<String, String>,
+    /// shadow / run_paper / run_velocity / paperweight (version strings)
+    #[serde(default)]
+    pub gradle_plugins: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,7 +148,63 @@ pub struct Plan {
     pub root: PathBuf,
     pub files: Vec<PlannedFile>,
     pub actions: Vec<PlannedAction>,
+    /// Conditional files that were intentionally not generated (informational).
+    pub skipped: Vec<String>,
+    /// Things the user should act on — not routine conditional skips.
     pub warnings: Vec<String>,
+}
+
+/// `paper` implies `bukkit`; de-duplicate and keep the canonical platform order.
+pub fn normalize_platforms(requested: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in requested {
+        let p = p.trim().to_ascii_lowercase();
+        if p.is_empty() {
+            continue;
+        }
+        if !out.contains(&p) {
+            out.push(p.clone());
+        }
+        if p == "paper" && !out.contains(&PAPER_IMPLIES.to_string()) {
+            out.push(PAPER_IMPLIES.to_string());
+        }
+    }
+    out.sort_by_key(|p| PLATFORMS.iter().position(|x| x == p).unwrap_or(usize::MAX));
+    out
+}
+
+/// `My Plugin!` -> `my-plugin`
+pub fn slug(name: &str) -> String {
+    let mut out = String::new();
+    let mut pending_dash = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if pending_dash && !out.is_empty() {
+                out.push('-');
+            }
+            pending_dash = false;
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            pending_dash = true;
+        }
+    }
+    out
+}
+
+/// `my-plugin` -> `MyPlugin`
+pub fn to_pascal(name: &str) -> String {
+    name.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            let mut chars = s.chars();
+            match chars.next() {
+                Some(first) => {
+                    first.to_ascii_uppercase().to_string() + &chars.as_str().to_ascii_lowercase()
+                }
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 impl Plan {
