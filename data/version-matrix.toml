@@ -1,0 +1,15 @@
+# 版本矩阵数据（OWNER: matrix-dev）。schema 见 docs/spec/vinoa-cli.md §6。
+schema = 1
+generated_at = "2026-09-25"
+
+[java]
+"1.8.9"   = { min = 8,  recommended = 8  }
+"1.12.2"  = { min = 8,  recommended = 11 }
+"1.16.5"  = { min = 8,  recommended = 16 }
+"1.17.1"  = { min = 16, recommended = 17 }
+"1.20.6"  = { min = 21, recommended = 21 }
+"1.21.11" = { min = 21, recommended = 21 }
+"26.2"    = { min = 25, recommended = 25 }
+
+[gradle]
+version = "9.8.0"

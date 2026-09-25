@@ -1,0 +1,68 @@
+# vinoa 内置模板集清单（CONTRACT FILE — 由 lead 维护；engine-dev 解析，content-dev 遵守）
+schema = 1
+min_cli_version = "0.1.0"
+name = "builtin"
+
+vars = [
+  "projectName", "pluginName", "pluginId", "packageName", "packagePath",
+  "mainClass", "mcVersion", "gradleVersion", "language", "license", "author",
+]
+
+# 常量文件（不随平台展开）
+[[entries]]
+path = "settings.gradle.kts"
+render = "template"
+
+[[entries]]
+path = "build.gradle.kts"
+render = "template"
+
+[[entries]]
+path = "gradle/libs.versions.toml"
+render = "template"
+
+[[entries]]
+path = "gradlew"
+render = "copy"
+mode = "755"
+
+[[entries]]
+path = "gradlew.bat"
+render = "copy"
+
+[[entries]]
+path = "gradle/wrapper/gradle-wrapper.properties"
+render = "template"
+
+[[entries]]
+path = ".gitignore"
+render = "copy"
+
+[[entries]]
+path = "README.md"
+render = "template"
+
+[[entries]]
+path = "LICENSE"
+render = "copy"
+
+# 共享模块
+[[entries]]
+path = "core/build.gradle.kts"
+render = "template"
+
+[[entries]]
+path = "core/src/main/java/{{ packagePath }}/ExampleService.java"
+render = "template"
+when = "has_example"
+
+# 平台模块（foreach = 每个已启用平台一次）
+[[entries]]
+path = "platforms/{{ platform }}/build.gradle.kts"
+render = "template"
+foreach = "platforms"
+
+[[entries]]
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/{{ pluginName }}Plugin.java"
+render = "template"
+foreach = "platforms"
