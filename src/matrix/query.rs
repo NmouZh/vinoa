@@ -742,8 +742,16 @@ fn validate(data: &MatrixData) -> std::result::Result<(), String> {
             }
             _ => {
                 for v in p.versions.iter() {
-                    if !data.java.contains_key(v) {
+                    let Some(java) = data.java.get(v) else {
                         return Err(format!("platform.{name}.versions 含未知版本 {v:?}"));
+                    };
+                    // A whitelisted but non-selectable version would be dead data
+                    // (`platform_plan` refuses it): the whitelist and the support
+                    // window must agree, so fail loudly instead.
+                    if !java.selectable {
+                        return Err(format!(
+                            "platform.{name}.versions 含 {v:?}，但 [java].{v}.selectable = false"
+                        ));
                     }
                     let has_coord = p.coordinate_map.contains_key(v)
                         || p.pinned.contains_key(v)

@@ -191,13 +191,54 @@ fn every_whitelisted_combination_resolves() {
                 .platform_plan(&mc, &platform)
                 .unwrap_or_else(|| panic!("{platform} × {mc} listed but not resolvable"));
             assert!(!plan.api_coordinate.is_empty(), "{platform} × {mc} has empty coordinate");
-            assert!(plan.api_coordinate.matches(':').count() >= 2, "{platform} × {mc}: {}", plan.api_coordinate);
+            // Contract with the renderer: every coordinate is exactly
+            // `group:artifact:version` (engine-dev splits on the last `:`).
+            // A classifier (`g:a:v:jar`) must fail here loudly, not mis-parse there.
+            assert_eq!(
+                plan.api_coordinate.matches(':').count(),
+                2,
+                "{platform} × {mc}: expected group:artifact:version, got {}",
+                plan.api_coordinate
+            );
+            assert!(
+                !plan.api_coordinate.contains(char::is_whitespace),
+                "{platform} × {mc}: whitespace in {}",
+                plan.api_coordinate
+            );
             assert!(plan.java_target >= 8, "{platform} × {mc} java {}", plan.java_target);
             assert_eq!(plan.id, platform);
         }
         matrix.resolve(&mc, &matrix.gated_platforms(&mc)).unwrap_or_else(|e| {
             panic!("resolve({mc}, all gated platforms) failed: {e}");
         });
+    }
+}
+
+#[test]
+fn whitelists_only_contain_selectable_versions() {
+    let matrix = m();
+    for p in matrix.platform_ids() {
+        for mc in matrix.platform_versions(&p) {
+            // proxy-style whitelists hold proxy versions, not MC versions
+            if crate::matrix::mc_key(&mc).is_none() {
+                continue;
+            }
+            assert!(
+                matrix.is_selectable(&mc),
+                "{p} whitelists {mc} although it is not selectable"
+            );
+            assert!(
+                matrix.platform_plan(&mc, &p).is_some(),
+                "{p} whitelists {mc} but cannot resolve it"
+            );
+        }
+    }
+    // and the reverse direction: supported_versions() covers every whitelisted MC version
+    let supported = matrix.supported_versions();
+    for p in ["paper", "bukkit", "folia", "sponge", "minestom"] {
+        for mc in matrix.platform_versions(&p) {
+            assert!(supported.contains(&mc), "{mc} reachable via {p} but not offered");
+        }
     }
 }
 
