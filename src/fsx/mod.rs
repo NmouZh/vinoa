@@ -4,7 +4,7 @@
 //! moved into place with a single `rename`; any failure leaves **no residue**.
 pub mod git;
 
-use crate::error::{Error, Result, EXIT_CANTCREAT, EXIT_IO};
+use crate::error::{self, Error, Result, EXIT_CANTCREAT};
 use crate::types::Plan;
 use std::path::{Path, PathBuf};
 
@@ -137,11 +137,7 @@ pub fn write_atomic(plan: &Plan) -> Result<()> {
 pub fn join_checked(base: &Path, rel: &str) -> Result<PathBuf> {
     if rel.is_empty() || Path::new(rel).is_absolute() || rel.starts_with('/') || rel.starts_with('\\')
     {
-        return Err(Error::new(
-            "write.io",
-            EXIT_IO,
-            format!("计划中的文件路径非法或越界: {rel}"),
-        ));
+        return Err(error::write_io(format!("计划中的文件路径非法或越界: {rel}")));
     }
     let mut out = base.to_path_buf();
     for segment in rel.split(['/', '\\']) {
@@ -149,11 +145,7 @@ pub fn join_checked(base: &Path, rel: &str) -> Result<PathBuf> {
             continue;
         }
         if segment == "." || segment == ".." || segment.contains(':') {
-            return Err(Error::new(
-                "write.io",
-                EXIT_IO,
-                format!("计划中的文件路径非法或越界: {rel}"),
-            ));
+            return Err(error::write_io(format!("计划中的文件路径非法或越界: {rel}")));
         }
         out.push(segment);
     }
@@ -202,7 +194,7 @@ fn set_executable(path: &Path) -> Result<()> {
 }
 
 fn io_err(context: &str, err: std::io::Error) -> Error {
-    Error::new("write.io", EXIT_IO, format!("{context}: {err}"))
+    error::write_io(format!("{context}: {err}"))
         .with_hint("已回滚，未留下半个工程；修好后重跑同一命令")
 }
 

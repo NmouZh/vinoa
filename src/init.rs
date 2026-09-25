@@ -71,27 +71,38 @@ pub fn run(args: InitArgs) -> Result<ExitCode> {
     }
 
     report::plan_human(&plan);
-    if args.json {
-        let extra = serde_json::json!({
-            "spec": {
-                "project_name": spec.project_name,
-                "package_name": spec.package_name,
-                "mc_version": spec.mc_version,
-                "platforms": spec.platforms,
-                "language": spec.language,
-            },
-            "resolved": resolved,
-            "dry_run": args.dry_run,
-        });
-        report::plan_json(&plan, &extra);
-    }
 
+    let precheck_json = java.to_json(spec.download_jdk);
+    let template_source = if args.template.is_some() { "external" } else { "builtin" };
+
+    // `--dry-run` prints the plan and stops — nothing is written.
     if args.dry_run {
+        if args.json {
+            let extra = serde_json::json!({
+                "spec": &spec,
+                "precheck": &precheck_json,
+                "matrix": &resolved,
+                "template_source": template_source,
+                "dry_run": true,
+            });
+            report::plan_json(&plan, &extra);
+        }
         return Ok(ExitCode::from(EXIT_OK));
     }
 
     if interactive && !ask_confirm("确认创建？")? {
         eprintln!("已取消，未写入任何文件。");
+        if args.json {
+            report::emit_json(&serde_json::json!({
+                "schema": "vinoa.init/v1",
+                "vinoa": env!("CARGO_PKG_VERSION"),
+                "ok": false,
+                "command": "init",
+                "status": "cancelled",
+                "exit_code": EXIT_OK,
+                "errors": [],
+            }));
+        }
         return Ok(ExitCode::from(EXIT_OK));
     }
 
@@ -101,13 +112,26 @@ pub fn run(args: InitArgs) -> Result<ExitCode> {
 
     // ── phase 7: post actions ───────────────────────────────────────────────
     let mut verify_failed = false;
+    let mut verify_json = verify::VerifyOutcome::not_run_json();
+    let mut git_json = serde_json::json!({ "initialized": false });
     for action in &plan.actions {
         match action {
-            crate::types::PlannedAction::GitInit { branch, message } => {
+            PlannedAction::GitInit { branch, message } => {
                 fsx::git::init_and_commit(&plan.root, branch, message)?;
+                git_json = serde_json::json!({
+                    "initialized": true,
+                    "branch": branch,
+                    "message": message,
+                });
             }
-            crate::types::PlannedAction::Verify => {
-                let outcome = verify::run(&plan, args.verify_online)?;
+            PlannedAction::Verify => {
+                let options = verify::VerifyOptions {
+                    online: args.verify_online,
+                    tail: args.verify_tail.unwrap_or(verify::DEFAULT_TAIL),
+                    timeout_s: verify::DEFAULT_TIMEOUT_S,
+                };
+                let outcome = verify::run_with(&plan, &options)?;
+                verify_json = outcome.to_json();
                 if outcome.ok {
                     eprintln!("  ✓ 验证通过（构建日志: {}）", outcome.log_path);
                 } else {
@@ -122,8 +146,35 @@ pub fn run(args: InitArgs) -> Result<ExitCode> {
         }
     }
 
-    // ── phase 8: report ─────────────────────────────────────────────────────
+    // ── phase 8: report — exactly one JSON document, after everything settled ─
     print_done(&plan);
+    if args.json {
+        let status = if verify_failed { "verify_failed" } else { "ok" };
+        let exit_code = if verify_failed { EXIT_VERIFY_FAILED } else { EXIT_OK };
+        let errors = if verify_failed {
+            serde_json::json!([{
+                "code": "verify.build_failed",
+                "phase": "verify",
+                "severity": "error",
+                "message": "生成的工程构建失败；工程已保留，可修复后重试",
+            }])
+        } else {
+            serde_json::json!([])
+        };
+        let extra = serde_json::json!({
+            "spec": &spec,
+            "precheck": &precheck_json,
+            "matrix": &resolved,
+            "template_source": template_source,
+            "git": &git_json,
+            "verify": &verify_json,
+            "ok": !verify_failed,
+            "status": status,
+            "exit_code": exit_code,
+            "errors": errors,
+        });
+        report::plan_json(&plan, &extra);
+    }
     if verify_failed {
         return Ok(ExitCode::from(EXIT_VERIFY_FAILED));
     }

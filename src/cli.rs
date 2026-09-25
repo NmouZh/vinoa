@@ -6,8 +6,12 @@
 use crate::error::{self, Result, EXIT_CONFIG, EXIT_OK, EXIT_VERIFY_FAILED};
 use crate::types::PLATFORMS;
 use clap::{ArgAction, Args, CommandFactory, FromArgMatches, Parser, Subcommand};
-use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+/// `versions --refresh` cache (spec §6.4). The file lives at `src/refresh_cache.rs`
+/// as the task requires; declaring it here keeps `lib.rs` (Lead-owned) untouched.
+#[path = "refresh_cache.rs"]
+pub mod refresh_cache;
 
 /// `--features` values (spec §3.3): five add-on modules + three quality sub-items.
 pub const FEATURE_NAMES: [&str; 8] = [
@@ -37,11 +41,6 @@ pub const EXIT_TABLE: [(&str, u8, &str); 9] = [
     ("CONFIG", EXIT_CONFIG, "内置模板/矩阵损坏，或 -c 配置文件语法错"),
     ("INTERRUPTED", crate::error::EXIT_INTERRUPT, "Ctrl-C / SIGINT：原子落盘已回滚"),
 ];
-
-/// User-cache artifact written by `versions --refresh` (spec §6.4: the matrix and
-/// its cache never enter a generated project).
-pub const CACHE_FILE_NAME: &str = "matrix-cache.json";
-pub const CACHE_SCHEMA: &str = "vinoa.matrix-cache/v1";
 
 #[derive(Debug)]
 pub enum Command {
@@ -145,6 +144,11 @@ pub struct VersionsArgs {
     pub mc: Option<String>,
     pub platform: Option<String>,
     pub json: bool,
+    /// `--online`: one online fetch, still cached (spec §6.4). Hidden on the
+    /// `versions` help so §3.4's usage line stays exact, but shared with `init`.
+    pub online: bool,
+    /// `--offline`: never touch the network; cache or builtin only.
+    pub offline: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -303,6 +307,14 @@ struct VersionsCli {
     /// 以 JSON 输出
     #[arg(long = "json", action = ArgAction::SetTrue)]
     json: bool,
+
+    /// 矩阵单次联网（§6.4；spec §3.4 用法行不含它，故隐藏）
+    #[arg(long = "online", action = ArgAction::SetTrue, conflicts_with = "offline", hide = true)]
+    online: bool,
+
+    /// 不联网：只用内置或缓存（§6.4）
+    #[arg(long = "offline", action = ArgAction::SetTrue, conflicts_with = "online", hide = true)]
+    offline: bool,
 }
 
 #[derive(Args, Debug, Default, Clone)]
@@ -390,6 +402,8 @@ pub fn parse() -> Result<Command> {
                 mc: v.mc,
                 platform: v.platform,
                 json: v.json,
+                online: v.online,
+                offline: v.offline,
             }))
         }
         Some(TopCommand::Schema(s)) => {
@@ -520,31 +534,51 @@ pub fn dispatch(command: Command) -> Result<ExitCode> {
 
 fn run_versions(args: VersionsArgs) -> Result<ExitCode> {
     let matrix = crate::matrix::Matrix::builtin()?;
-    let mut source = "builtin".to_string();
     let mut warnings: Vec<String> = Vec::new();
     let mut refreshed: Option<crate::matrix::RefreshReport> = None;
 
-    if args.refresh {
+    // Provenance: `builtin` / `cache` / `online` (spec §6.4). The cache only
+    // records upstream drift for reporting; it never feeds a generated artifact.
+    let cache = crate::cli::refresh_cache::load();
+    if let crate::cli::refresh_cache::CacheState::Corrupt(reason) = &cache {
+        warnings.push(format!("矩阵缓存不可用，已忽略并回退内置矩阵: {reason}"));
+    }
+    let (mut source, offline_warning) = crate::cli::refresh_cache::decide_source(
+        args.refresh,
+        args.online,
+        args.offline,
+        &cache,
+    );
+    if let Some(w) = offline_warning {
+        warnings.push(w);
+    }
+
+    if source == crate::cli::refresh_cache::MatrixSource::Online {
         // API base is owned by the matrix module — single source of truth.
         match crate::matrix::refresh::refresh(crate::matrix::API_BASE) {
             Ok(report) => {
-                // Spec §6.4: `--refresh` writes the **user cache directory**, never
-                // the generated project. A cache write failure must not block.
-                match write_cache(&report) {
+                // Spec §6.4: the refresh result is written to the **user cache
+                // directory**, never the generated project; a write failure must
+                // not block.
+                match crate::cli::refresh_cache::write(&report) {
                     Ok(path) => {
                         crate::report::info(&format!("矩阵已刷新并写入缓存: {}\n", path.display()));
                     }
                     Err(err) => warnings.push(format!("矩阵缓存写入失败（不影响本次结果）: {err}")),
                 }
-                source = report.source.clone();
+                source = crate::cli::refresh_cache::MatrixSource::Online;
                 refreshed = Some(report);
             }
             Err(err) => {
-                warnings.push(format!("矩阵联网刷新失败，回退内置矩阵（不阻塞 init）: {err}"));
-                source = "builtin".to_string();
+                warnings.push(format!(
+                    "矩阵联网刷新失败，回退内置矩阵（不阻塞 init）: {err}"
+                ));
+                source = crate::cli::refresh_cache::MatrixSource::Builtin;
             }
         }
     }
+
+    let source = source.as_str().to_string();
 
     let mut versions = matrix.supported_versions();
     if let Some(mc) = &args.mc {
@@ -631,82 +665,6 @@ fn run_versions(args: VersionsArgs) -> Result<ExitCode> {
         crate::report::warn(&w);
     }
     Ok(ExitCode::from(EXIT_OK))
-}
-
-// ── matrix cache (spec §6.4) ────────────────────────────────────────────────
-
-/// User cache directory for the refreshed matrix. Never inside a project.
-pub fn cache_dir() -> Option<PathBuf> {
-    cache_dir_for(
-        if cfg!(windows) {
-            "windows"
-        } else if cfg!(target_os = "macos") {
-            "macos"
-        } else {
-            "linux"
-        },
-        std::env::var("XDG_CACHE_HOME").ok().as_deref(),
-        std::env::var("HOME").ok().as_deref(),
-        std::env::var("LOCALAPPDATA").ok().as_deref(),
-    )
-}
-
-/// Pure OS dispatch for [`cache_dir`] (`os` ∈ `windows` | `macos` | other).
-pub fn cache_dir_for(
-    os: &str,
-    xdg: Option<&str>,
-    home: Option<&str>,
-    local_app_data: Option<&str>,
-) -> Option<PathBuf> {
-    match os {
-        "windows" => local_app_data.map(|l| PathBuf::from(l).join("vinoa").join("cache")),
-        "macos" => home.map(|h| PathBuf::from(h).join("Library/Caches/vinoa")),
-        _ => xdg
-            .map(PathBuf::from)
-            .or_else(|| home.map(|h| PathBuf::from(h).join(".cache")))
-            .map(|p| p.join("vinoa")),
-    }
-}
-
-pub fn cache_file() -> Option<PathBuf> {
-    cache_dir().map(|d| d.join(CACHE_FILE_NAME))
-}
-
-/// Persist a refresh result into the user cache directory (atomic write).
-pub fn write_cache(report: &crate::matrix::RefreshReport) -> Result<PathBuf> {
-    let dir = cache_dir().ok_or_else(|| {
-        error::config("无法确定用户缓存目录（XDG_CACHE_HOME / HOME / LOCALAPPDATA 均不可用）")
-    })?;
-    write_cache_to(&dir, report)
-}
-
-/// Atomic cache write into an explicit directory (testable).
-pub fn write_cache_to(dir: &Path, report: &crate::matrix::RefreshReport) -> Result<PathBuf> {
-    std::fs::create_dir_all(dir).map_err(|e| {
-        error::io(format!("无法创建缓存目录 {}: {e}", dir.display()))
-    })?;
-    let doc = serde_json::json!({
-        "schema": CACHE_SCHEMA,
-        "vinoa": env!("CARGO_PKG_VERSION"),
-        "generated_at": crate::report::utc_now_rfc3339(),
-        "report": report,
-    });
-    let file = tempfile::Builder::new()
-        .prefix(".vinoa-cache-")
-        .tempfile_in(dir)
-        .map_err(|e| error::io(format!("无法创建缓存临时文件: {e}")))?;
-    serde_json::to_writer_pretty(&file, &doc)
-        .map_err(|e| error::io(format!("无法序列化矩阵缓存: {e}")))?;
-    let path = dir.join(CACHE_FILE_NAME);
-    file.persist(&path)
-        .map_err(|e| error::io(format!("无法写入缓存 {}: {}", path.display(), e.error)))?;
-    Ok(path)
-}
-
-/// Read a previously written cache document, if present and parseable.
-pub fn read_cache() -> Option<serde_json::Value> {
-    let text = std::fs::read_to_string(cache_file()?).ok()?;
-    serde_json::from_str(&text).ok()
 }
 
 fn run_schema(_args: SchemaArgs) -> Result<ExitCode> {
@@ -856,53 +814,6 @@ mod tests {
     }
 
     #[test]
-    fn cache_dir_follows_each_platform_convention() {
-        assert_eq!(
-            cache_dir_for("linux", Some("/x/cache"), Some("/home/u"), None),
-            Some(PathBuf::from("/x/cache/vinoa"))
-        );
-        assert_eq!(
-            cache_dir_for("linux", None, Some("/home/u"), None),
-            Some(PathBuf::from("/home/u/.cache/vinoa"))
-        );
-        assert_eq!(
-            cache_dir_for("macos", None, Some("/Users/u"), None),
-            Some(PathBuf::from("/Users/u/Library/Caches/vinoa"))
-        );
-        assert_eq!(
-            cache_dir_for("windows", None, None, Some("C:\\Users\\u\\AppData\\Local")),
-            Some(PathBuf::from("C:\\Users\\u\\AppData\\Local").join("vinoa").join("cache"))
-        );
-        assert_eq!(cache_dir_for("linux", None, None, None), None);
-        assert_eq!(cache_dir_for("windows", None, Some("/home/u"), None), None);
-    }
-
-    #[test]
-    fn refresh_cache_round_trips_and_is_atomic() {
-        let tmp = tempfile::tempdir().unwrap();
-        let report = crate::matrix::RefreshReport {
-            source: "online".into(),
-            projects: std::collections::BTreeMap::new(),
-            changed: vec!["paper: 上游新增 26.3".into()],
-        };
-        let path = write_cache_to(tmp.path(), &report).unwrap();
-        assert_eq!(path.file_name().unwrap().to_string_lossy(), CACHE_FILE_NAME);
-        let doc: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(doc["schema"], CACHE_SCHEMA);
-        assert_eq!(doc["report"]["source"], "online");
-        assert_eq!(doc["report"]["changed"][0], "paper: 上游新增 26.3");
-        // No temp residue next to the cache file.
-        let leftovers: Vec<String> = std::fs::read_dir(tmp.path())
-            .unwrap()
-            .flatten()
-            .map(|e| e.file_name().to_string_lossy().to_string())
-            .filter(|n| n.starts_with(".vinoa-cache-"))
-            .collect();
-        assert!(leftovers.is_empty(), "cache residue: {leftovers:?}");
-    }
-
-    #[test]
     fn conflicting_flags_are_usage_errors() {
         assert!(
             Cli::try_parse_from(["vinoa", "init", "--download-jdk", "--no-download-jdk"]).is_err()
@@ -939,5 +850,52 @@ mod tests {
         for token in ["--refresh", "--matrix", "--mc <版本>", "--platform <平台>", "--json"] {
             assert!(h.contains(token), "missing {token} in:\n{h}");
         }
+        // The shared §6.4 source flags stay hidden so §3.4's usage line is exact.
+        assert!(!h.contains("--online"), "hidden flag leaked into help:\n{h}");
+        assert!(!h.contains("--offline"), "hidden flag leaked into help:\n{h}");
+    }
+
+    #[test]
+    fn versions_accepts_the_hidden_matrix_source_flags() {
+        let cmd = Cli::try_parse_from(["vinoa", "versions", "--offline"]).unwrap();
+        let Some(TopCommand::Versions(v)) = cmd.command else { panic!("expected versions") };
+        let args = VersionsArgs {
+            refresh: v.refresh,
+            matrix: v.matrix,
+            mc: v.mc,
+            platform: v.platform,
+            json: v.json,
+            online: v.online,
+            offline: v.offline,
+        };
+        assert!(args.offline && !args.online);
+
+        let cmd = Cli::try_parse_from(["vinoa", "versions", "--online", "--refresh"]).unwrap();
+        let Some(TopCommand::Versions(v)) = cmd.command else { panic!("expected versions") };
+        assert!(v.online && v.refresh && !v.offline);
+
+        // `--offline` and `--online` are mutually exclusive.
+        assert!(Cli::try_parse_from(["vinoa", "versions", "--offline", "--online"]).is_err());
+    }
+
+    /// Task-6 acceptance: no cache + `--offline` ⇒ built-in, exit 0, warning-free.
+    #[test]
+    fn versions_offline_without_cache_stays_on_builtin() {
+        let (source, warning) = refresh_cache::decide_source(false, false, true, &refresh_cache::CacheState::Missing);
+        assert_eq!(source, refresh_cache::MatrixSource::Builtin);
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn versions_report_the_cache_source_when_one_exists() {
+        let cache = refresh_cache::CacheState::Valid(serde_json::json!({
+            "schema": refresh_cache::CACHE_SCHEMA,
+            "generated_at": "2026-09-25T10:00:00Z",
+            "report": {"source": "online", "changed": ["paper: 上游新增 26.3"]}
+        }));
+        let (source, warning) = refresh_cache::decide_source(false, false, false, &cache);
+        assert_eq!(source, refresh_cache::MatrixSource::Cache);
+        assert!(warning.is_none());
+        assert_eq!(cache.changed(), vec!["paper: 上游新增 26.3"]);
     }
 }

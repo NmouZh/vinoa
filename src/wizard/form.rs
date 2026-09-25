@@ -58,9 +58,8 @@ impl WizardForm {
         let supported = matrix.supported_versions();
         let mc = match &args.mc {
             Some(m) => m.clone(),
-            None => latest_supported(&supported).ok_or_else(|| {
-                Error::new("matrix.empty", crate::error::EXIT_CONFIG, "内置矩阵没有任何受支持的 MC 版本")
-            })?,
+            None => latest_supported(&supported)
+                .ok_or_else(|| crate::error::matrix_empty("内置矩阵没有任何受支持的 MC 版本"))?,
         };
         let language = match args.language.as_deref() {
             Some("zh") => ArtifactLanguage::Zh,

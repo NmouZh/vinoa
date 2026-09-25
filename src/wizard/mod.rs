@@ -6,7 +6,7 @@
 pub mod form;
 
 use crate::cli::InitArgs;
-use crate::error::{Error, Result, EXIT_INTERRUPT, EXIT_TEMPFAIL, EXIT_USAGE};
+use crate::error::{self, Result};
 use crate::matrix::Matrix;
 use crate::types::{ArtifactLanguage, MetadataFormat, ProjectSpec, UiLanguage};
 use form::{
@@ -115,14 +115,10 @@ fn page_target(ui: &Ui, form: &mut WizardForm, matrix: &Matrix) -> Result<Nav> {
 
     let versions = matrix.supported_versions();
     if versions.is_empty() {
-        return Err(Error::new(
-            "matrix.empty",
-            crate::error::EXIT_CONFIG,
-            ui.t(
-                "内置矩阵没有任何受支持的 MC 版本",
-                "the builtin matrix has no supported MC versions",
-            ),
-        ));
+        return Err(error::matrix_empty(ui.t(
+            "内置矩阵没有任何受支持的 MC 版本",
+            "the builtin matrix has no supported MC versions",
+        )));
     }
     let v_cursor = versions
         .iter()
@@ -336,18 +332,12 @@ fn numeric_validator(input: &str) -> std::result::Result<Validation, CustomUserE
 fn map_inquire<T>(result: std::result::Result<T, InquireError>) -> Result<T> {
     result.map_err(|e| match e {
         InquireError::OperationCanceled => {
-            Error::new("interrupted", EXIT_INTERRUPT, "已取消（Esc）：未写入任何文件")
+            error::interrupted("已取消（Esc）：未写入任何文件")
                 .with_hint("复现: vinoa init <名称> -m <版本> --platform <平台> -y")
         }
-        InquireError::OperationInterrupted => {
-            Error::new("interrupted", EXIT_INTERRUPT, "已中断（Ctrl-C）：未写入任何文件")
-        }
-        InquireError::NotTTY => Error::new(
-            "usage.invalid",
-            EXIT_USAGE,
-            "向导需要 TTY；非交互请用 --yes 或显式参数",
-        ),
-        other => Error::new("input.failed", EXIT_TEMPFAIL, other.to_string()),
+        InquireError::OperationInterrupted => error::interrupted("已中断（Ctrl-C）：未写入任何文件"),
+        InquireError::NotTTY => error::usage("向导需要 TTY；非交互请用 --yes 或显式参数"),
+        other => error::input_failed(other.to_string()),
     })
 }
 
@@ -414,9 +404,9 @@ mod tests {
     #[test]
     fn cancelled_prompts_map_to_exit_130() {
         let err = map_inquire::<()>(Err(InquireError::OperationCanceled)).unwrap_err();
-        assert_eq!(err.exit_code(), EXIT_INTERRUPT);
-        assert_eq!(err.code, "interrupted");
+        assert_eq!(err.exit_code(), crate::error::EXIT_INTERRUPT);
+        assert_eq!(err.code, "interrupt.cancelled");
         let err = map_inquire::<()>(Err(InquireError::NotTTY)).unwrap_err();
-        assert_eq!(err.exit_code(), EXIT_USAGE);
+        assert_eq!(err.exit_code(), crate::error::EXIT_USAGE);
     }
 }

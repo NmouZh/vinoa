@@ -63,3 +63,23 @@ pub fn cant_create(msg: impl Into<String>) -> Error {
 pub fn tempfail(msg: impl Into<String>) -> Error {
     Error::new("env.missing_java", EXIT_TEMPFAIL, msg)
 }
+
+/// Wizard cancelled by the user (Esc / Ctrl-C) — spec §11.6.
+pub fn interrupted(msg: impl Into<String>) -> Error {
+    Error::new("interrupt.cancelled", EXIT_INTERRUPT, msg)
+}
+
+/// Interactive prompt failed on IO (not a user cancellation).
+pub fn input_failed(msg: impl Into<String>) -> Error {
+    Error::new("input.failed", EXIT_TEMPFAIL, msg)
+}
+
+/// The matrix carries no selectable version at all.
+pub fn matrix_empty(msg: impl Into<String>) -> Error {
+    Error::new("matrix.empty", EXIT_CONFIG, msg)
+}
+
+/// Defensive: a planned path escaped the target root.
+pub fn write_io(msg: impl Into<String>) -> Error {
+    Error::new("write.io", EXIT_IO, msg)
+}

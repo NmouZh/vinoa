@@ -8,17 +8,27 @@ plugins {
 
 description = "BungeeCord proxy adapter for {{ pluginName }} (experimental)."
 
-tasks.withType<JavaCompile>().configureEach {
-    options.encoding = "UTF-8"
-    options.release = {{ javaTarget }}
-}
-{% if cap_toolchain_download %}
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of({{ javaTarget }})
+val targetJava = {{ javaTarget }}
+
+if (targetJava >= 17) {
+    // Modern target: compile with a matching JDK toolchain. Gradle discovers an installed JDK
+    // (or provisions one when the foojay resolver is enabled), so the JVM running Gradle does
+    // not have to match the target. --release would require that it did.
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(targetJava)
+        }
+    }
+} else {
+    // Legacy target: --release on whatever JVM runs Gradle, so a Java 8 target needs no JDK 8.
+    tasks.withType<JavaCompile>().configureEach {
+        options.release = targetJava
     }
 }
-{% endif %}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+}
 {% if cap_quality %}
 val junitBom = if ({{ javaTarget }} <= 8) libs.junit.bom.legacy else libs.junit.bom.modern
 

@@ -92,7 +92,7 @@ pub fn phase_for_code(code: &str) -> &'static str {
         "verify"
     } else if code.starts_with("write.") || code.starts_with("fs.") || code.starts_with("io.") {
         "write"
-    } else if code.starts_with("config.") || code.starts_with("usage.") {
+    } else if code.starts_with("config.") || code.starts_with("usage.") || code.starts_with("interrupt.") || code.starts_with("input.") {
         "input"
     } else if code.starts_with("var.") || code.starts_with("data.") {
         "validate"
@@ -430,6 +430,11 @@ mod tests {
         ] {
             assert_eq!(status_for_exit(exit), status, "{code}");
         }
+        // Helpers added to `error.rs` by the Lead.
+        assert_eq!(phase_for_code("interrupt.cancelled"), "input");
+        assert_eq!(phase_for_code("input.failed"), "input");
+        assert_eq!(phase_for_code("write.io"), "write");
+        assert_eq!(phase_for_code("matrix.empty"), "matrix");
     }
 
     #[test]

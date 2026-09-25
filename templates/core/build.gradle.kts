@@ -10,18 +10,27 @@ plugins {
 description = "Platform-independent logic for {{ pluginName }}."
 
 // The compiler targets the LOWEST Java level among the enabled modules.
-// Gradle itself keeps running on its own JVM; --release pins the bytecode level.
-tasks.withType<JavaCompile>().configureEach {
-    options.encoding = "UTF-8"
-    options.release = {{ coreJavaTarget }}
-}
-{% if cap_toolchain_download %}
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of({{ coreJavaTarget }})
+val targetJava = {{ coreJavaTarget }}
+
+if (targetJava >= 17) {
+    // Modern target: use a matching JDK toolchain. Gradle discovers an installed JDK (or
+    // provisions one when the foojay resolver is enabled); --release would instead require the
+    // JVM running Gradle to be at least as new as the target.
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(targetJava)
+        }
+    }
+} else {
+    // Legacy target: --release keeps working on whatever JVM runs Gradle.
+    tasks.withType<JavaCompile>().configureEach {
+        options.release = targetJava
     }
 }
-{% endif %}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+}
 {% if cap_quality %}
 val junitBom = if ({{ coreJavaTarget }} <= 8) libs.junit.bom.legacy else libs.junit.bom.modern
 

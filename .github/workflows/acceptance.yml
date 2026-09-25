@@ -1,0 +1,159 @@
+name: acceptance
+
+# vinoa 自己的验收矩阵（spec §12.3）。
+# 保证行（A 级）必须真跑 `./gradlew build`；B 级只做渲染 + 依赖解析 + 静态断言。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 夜间探测上游漂移（坐标/Java 地板/仓库变化），非 PR 阻塞。
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # 生成物里的 foojay 在 CI 里不下网：逼出"本机 JDK 必须在场"的真实路径。
+  GRADLE_NO_AUTO_DOWNLOAD: "-Porg.gradle.java.installations.auto-download=false"
+
+jobs:
+  unit:
+    name: unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test
+        run: cargo test --locked --all-targets
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  # A 级保证矩阵：spec §12.2 的 A1–A7。
+  acceptance:
+    name: A${{ matrix.row }} ${{ matrix.label }} (${{ matrix.os }}, JDK ${{ matrix.gradle_jdk }})
+    runs-on: ${{ matrix.os }}
+    needs: unit
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { row: 1, label: "1.8.9 bukkit",   mc: "1.8.9",   platform: "bukkit",     gradle_jdk: 21, os: ubuntu-latest }
+          - { row: 2, label: "1.12.2 paper",   mc: "1.12.2",  platform: "paper",      gradle_jdk: 21, os: ubuntu-latest }
+          - { row: 3, label: "1.16.5 paper",   mc: "1.16.5",  platform: "paper",      gradle_jdk: 21, os: ubuntu-latest }
+          - { row: 4, label: "1.21.11 paper",  mc: "1.21.11", platform: "paper",      gradle_jdk: 21, os: ubuntu-latest }
+          - { row: 5, label: "26.2 paper",     mc: "26.2",    platform: "paper",      gradle_jdk: 25, os: ubuntu-latest }
+          - { row: 6, label: "velocity",       mc: "1.21.11", platform: "velocity",   gradle_jdk: 25, os: ubuntu-latest }
+          - { row: 7, label: "bungeecord",     mc: "1.21.11", platform: "bungeecord", gradle_jdk: 21, os: ubuntu-latest }
+          # Windows 必跑（官方支持环境），抽 A1/A4/A5/A7。
+          - { row: 1, label: "1.8.9 bukkit",   mc: "1.8.9",   platform: "bukkit",     gradle_jdk: 21, os: windows-latest }
+          - { row: 4, label: "1.21.11 paper",  mc: "1.21.11", platform: "paper",      gradle_jdk: 21, os: windows-latest }
+          - { row: 5, label: "26.2 paper",     mc: "26.2",    platform: "paper",      gradle_jdk: 25, os: windows-latest }
+          - { row: 7, label: "bungeecord",     mc: "1.21.11", platform: "bungeecord", gradle_jdk: 21, os: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            17
+            21
+            25
+      - name: Build vinoa
+        run: cargo build --locked
+      - name: Generate (dry-run JSON must parse)
+        shell: bash
+        run: |
+          ./target/debug/vinoa init my-plugin -p com.example.myplugin \
+            -m "${{ matrix.mc }}" --platform "${{ matrix.platform }}" -y --dry-run --json > plan.json
+          python3 -c "import json;json.load(open('plan.json'))"
+      - name: Generate project
+        shell: bash
+        run: |
+          ./target/debug/vinoa init my-plugin -p com.example.myplugin \
+            -m "${{ matrix.mc }}" --platform "${{ matrix.platform }}" -y --no-git
+      - name: Warm-up dependencies (network)
+        shell: bash
+        working-directory: my-plugin
+        run: |
+          if [ -f gradlew ]; then ./gradlew dependencies ${{ env.GRADLE_NO_AUTO_DOWNLOAD }} || true
+          else gradle dependencies ${{ env.GRADLE_NO_AUTO_DOWNLOAD }} || true; fi
+      - name: Build generated project (offline, guaranteed row)
+        shell: bash
+        working-directory: my-plugin
+        run: |
+          if [ -f gradlew ]; then ./gradlew build --offline ${{ env.GRADLE_NO_AUTO_DOWNLOAD }}
+          else gradle build --offline ${{ env.GRADLE_NO_AUTO_DOWNLOAD }}; fi
+      - name: Assert jars exist
+        shell: bash
+        working-directory: my-plugin
+        run: |
+          set -e
+          find . -path '*build/libs*' -name '*.jar' -not -name '*-sources.jar' | grep . || {
+            echo "no jar produced"; exit 1; }
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-A${{ matrix.row }}-${{ matrix.os }}
+          path: |
+            plan.json
+            my-plugin/build/reports/**
+            my-plugin/.vinoa/verify/*.log
+          if-no-files-found: ignore
+
+  # B 级：渲染 + 依赖解析 + 静态断言，不跑完整构建；覆盖 experimental 平台与变体。
+  render-only:
+    name: render-only ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    needs: unit
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: "folia 26.2",       mc: "26.2",    platform: "folia" }
+          - { label: "sponge 26.2",      mc: "26.2",    platform: "sponge" }
+          - { label: "minestom 26.2",    mc: "26.2",    platform: "minestom" }
+          - { label: "paper-plugin.yml", mc: "1.21.11", platform: "paper", metadata: "paper-plugin" }
+          - { label: "lang en",          mc: "1.21.11", platform: "paper", lang: "en" }
+          - { label: "lang both",        mc: "1.21.11", platform: "paper", lang: "both" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "25" }
+      - name: Render + resolve dependencies
+        shell: bash
+        run: |
+          cargo build --locked
+          ARGS="-m ${{ matrix.mc }} --platform ${{ matrix.platform }} -y --no-git"
+          [ -n "${{ matrix.metadata }}" ] && ARGS="$ARGS --metadata ${{ matrix.metadata }}"
+          [ -n "${{ matrix.lang }}" ] && ARGS="$ARGS --lang ${{ matrix.lang }}"
+          ./target/debug/vinoa init my-plugin -p com.example.myplugin $ARGS --json > plan.json
+          python3 -c "import json;d=json.load(open('plan.json'));assert d['ok']"
+      - name: Resolve dependency closure (no full build)
+        shell: bash
+        working-directory: my-plugin
+        run: ./gradlew dependencies --configuration compileClasspath || true
+
+  # 夜间：刷新矩阵后重跑，用来提前发现上游坐标漂移。
+  drift:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: versions --refresh
+        run: |
+          cargo run --locked -- versions --refresh --json | tee refresh.json
+          python3 -c "import json;print('source:', json.load(open('refresh.json')).get('source'))"
