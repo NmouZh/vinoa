@@ -22,8 +22,8 @@ vars = [
   "javaTargetMax", "javaTargets", "junitLegacyVersion", "junitModernVersion",
   "license", "mcVersion", "packageName", "packagePath", "permissionNode",
   "pluginDescription", "pluginId", "pluginName", "pluginYmlApiVersion",
-  "platforms", "projectName", "projectVersion", "runPaperVersion", "shadowVersion",
-  "spotbugsPluginVersion",
+  "bstatsPluginId", "platforms", "projectName", "projectVersion", "runPaperVersion", "shadowVersion",
+  "spotbugsLegacyVersion", "spotbugsModernVersion", "spotbugsPluginVersion", "thirdparty",
 ]
 
 # 本模板集真正实现了的能力白名单；init 对未实现项硬报错（exit 65），不再静默。
@@ -217,6 +217,59 @@ foreach = "platforms"
 template = "platforms/_p_/Test.java"
 path = "platforms/{{ platform }}/src/test/java/{{ packagePath }}/{{ platform }}/{{ pluginName }}Test.java"
 when = "cap_quality"
+foreach = "platforms"
+
+# ---------------------------------------------------------------------------
+# 可选模块（task-7；`--features` 硬守卫见 [features]）
+# ---------------------------------------------------------------------------
+[[entries]]
+path = ".editorconfig"
+render = "copy"
+when = "cap_quality"
+
+[[entries]]
+path = ".github/workflows/release.yml"
+when = "all_of(cap_quality, cap_release_ci)"
+
+# integrationTest source set 只加在 paper/folia（§9.4 / ruling B6）。
+[[entries]]
+template = "platforms/_p_/IntegrationTest.java"
+path = "platforms/{{ platform }}/src/integrationTest/java/{{ packagePath }}/{{ platform }}/{{ pluginName }}IntegrationTest.java"
+when = "cap_integration_test"
+foreach = "platforms"
+
+[[entries]]
+template = "core/java/update/UpdateChecker.java"
+path = "core/src/main/java/{{ packagePath }}/update/UpdateChecker.java"
+when = "cap_update_check"
+
+[[entries]]
+template = "core/java/storage/Storage.java"
+path = "core/src/main/java/{{ packagePath }}/storage/Storage.java"
+when = "cap_sqlite"
+
+[[entries]]
+template = "core/java/storage/SqliteStorage.java"
+path = "core/src/main/java/{{ packagePath }}/storage/SqliteStorage.java"
+when = "cap_sqlite"
+
+# GUI / bStats / PlaceholderAPI 依赖 Bukkit 系 API，代理端与 sponge/minestom 不生成。
+[[entries]]
+template = "platforms/_p_/gui/Menu.java"
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/gui/Menu.java"
+when = "all_of(cap_gui, any_of(is_paper, is_folia, is_bukkit, is_bungeecord))"
+foreach = "platforms"
+
+[[entries]]
+template = "platforms/_p_/metrics/Metrics.java"
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/metrics/Metrics.java"
+when = "all_of(cap_bstats, any_of(is_paper, is_folia, is_bukkit, is_bungeecord))"
+foreach = "platforms"
+
+[[entries]]
+template = "platforms/_p_/hook/PlaceholderHook.java"
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/hook/PlaceholderHook.java"
+when = "all_of(cap_placeholderapi, any_of(is_paper, is_folia, is_bukkit))"
 foreach = "platforms"
 
 # ---------------------------------------------------------------------------

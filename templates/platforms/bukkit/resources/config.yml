@@ -9,3 +9,24 @@ debug: false
 # Locale used by default when several language packs are bundled.
 default-locale: zh_CN
 {% endif %}
+
+{% if cap_sqlite %}
+# SQLite persistence. Schema changes are tracked with SQLite's own user_version pragma.
+database:
+  enabled: false
+  file: '{{ pluginId }}.db'
+{% endif %}
+{% if cap_update_check %}
+# Update check: logs a line when a newer version exists. It never downloads anything.
+update-check:
+  enabled: false
+  endpoint: ''
+{% endif %}
+{% if cap_bstats %}
+# Anonymous usage statistics (bStats). See the libraries: entry in plugin.yml.
+bstats: true
+{% endif %}
+{% if cap_gui %}
+# Chest-menu helper (Menu in the gui package).
+gui: true
+{% endif %}

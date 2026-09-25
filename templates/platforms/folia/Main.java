@@ -4,6 +4,15 @@ import {{ packageName }}.ExampleService;
 import {{ packageName }}.config.PluginConfig;
 import {{ packageName }}.message.Messages;
 import {{ packageName }}.{{ platform }}.command.ExampleCommand;
+{% if cap_placeholderapi %}
+import {{ packageName }}.{{ platform }}.hook.PlaceholderHook;
+{% endif %}
+{% if cap_bstats and cap_libraries %}
+import {{ packageName }}.{{ platform }}.metrics.Metrics;
+{% endif %}
+{% if cap_update_check %}
+import {{ packageName }}.update.UpdateChecker;
+{% endif %}
 import {{ packageName }}.{{ platform }}.listener.ExampleListener;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -51,6 +60,19 @@ public final class {{ pluginName }} extends JavaPlugin {
         saveDefaultConfig();
         this.service = new ExampleService(PluginConfig.from(getConfig().getValues(true)), loadMessages());
         getServer().getPluginManager().registerEvents(new ExampleListener(service), this);
+{% if cap_bstats and cap_libraries %}
+        // bStats is not a server plugin: its classes arrive through the libraries: metadata field.
+        new Metrics(this);
+{% endif %}
+{% if cap_placeholderapi %}
+        // Soft dependency: only register the expansion when the API is really on the classpath.
+        try {
+            Class.forName("me.clip.placeholderapi.PlaceholderAPI");
+            new PlaceholderHook(this, service).register();
+        } catch (ClassNotFoundException absent) {
+            getLogger().info("PlaceholderAPI is not installed; the expansion stays unregistered.");
+        }
+{% endif %}
 {% if is_paper_metadata %}
         // Paper plugin format: commands are NOT declared in paper-plugin.yml. Registering them
         // through the lifecycle API is the only path, and using plugin.yml alongside it would

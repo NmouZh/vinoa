@@ -44,13 +44,16 @@ const GRADLE_PLUGIN_SCALARS: [(&str, &str); 5] = [
 
 /// §9.5 hard floors, used only when the matrix has no value (a warning is
 /// emitted), so the matrix stays the single source of truth.
-const SPEC_DEFAULTS: [(&str, &str); 8] = [
-    ("checkstyle", "13.0.0"),
+const SPEC_DEFAULTS: [(&str, &str); 9] = [
+    // Lead ruling: 10.24.x is Gradle 9's default and runs on JDK 17; 13.x needs 21.
+    ("checkstyle", "10.24.0"),
     ("checkstyle_legacy", "9.3"),
     ("junit", "6.1.3"),
     ("junit_legacy", "5.14.4"),
-    ("spotbugs", "4.10.0"),
+    ("spotbugs", "4.10.4"),
     ("spotbugs_legacy", "4.8.6"),
+    // Gradle *plugin* version (com.github.spotbugs), verified 6.5.11.
+    ("spotbugs_plugin", "6.5.11"),
     ("run_paper", "3.1.0"),
     ("shadow", "9.6.1"),
 ];
@@ -281,6 +284,10 @@ pub fn build_context(
     sw.insert("cap_release_ci".into(), json!(f.release_ci));
     sw.insert("cap_run_paper".into(), json!(run_task == "run-paper"));
     sw.insert(
+        "cap_integration_test".into(),
+        json!(platforms.iter().any(|p| p == "paper" || p == "folia")),
+    );
+    sw.insert(
         "cap_paper_brigadier".into(),
         json!(platforms.iter().any(|p| p == "paper") && mc_ge(mc, "1.20.6")),
     );
@@ -382,6 +389,11 @@ pub fn loop_scope(base: &Ctx, platform: &str) -> Ctx {
     ctx.insert("javaTarget".into(), java_target.clone());
     ctx.insert("mainClass".into(), map_get("mainClasses"));
     ctx.insert("isServerPlatform".into(), json!(!is_proxy(platform)));
+    // `integrationTest` source set exists only for paper/folia (spec §9.4/B6).
+    ctx.insert(
+        "cap_integration_test".into(),
+        json!(platform == "paper" || platform == "folia"),
+    );
     // `is_<platform>` / `cap_<platform>_module` become "is it the current one".
     for p in PLATFORMS {
         let on = p == platform;
@@ -402,7 +414,7 @@ pub fn is_proxy(platform: &str) -> bool {
 fn spec_default(key: &str, warnings: &mut Vec<String>) -> Option<String> {
     match SPEC_DEFAULTS.iter().find(|(k, _)| *k == key) {
         Some((_, v)) => {
-            warnings.push(format!("版本矩阵缺少键 `{key}`，暂用 §9.5 默认值 {v}"));
+            warnings.push(format!("版本矩阵缺少键 `{key}`，暂用内置默认值 {v}"));
             Some((*v).to_string())
         }
         None => None,

@@ -73,6 +73,31 @@ pub fn run(args: InitArgs) -> Result<ExitCode> {
         }
         None => template::load_manifest()?,
     };
+
+    // Guard: every requested capability must actually be implemented by the
+    // template set that is about to render. Silently generating nothing is worse
+    // than failing loudly — the user would believe the feature is there.
+    let requested = requested_features(&spec);
+    let implemented = manifest.implemented_features();
+    let unimplemented: Vec<&str> = requested
+        .iter()
+        .copied()
+        .filter(|token| !implemented.iter().any(|done| done == token))
+        .collect();
+    if !unimplemented.is_empty() {
+        let have = if implemented.is_empty() {
+            "(无)".to_string()
+        } else {
+            implemented.join(", ")
+        };
+        return Err(Error::new(
+            "template.feature_unimplemented",
+            error::EXIT_DATA,
+            format!("请求的功能当前模板集尚未实现: {}", unimplemented.join(", ")),
+        )
+        .with_hint(format!("该模板集已实现: {have}")));
+    }
+
     let mut plan: Plan = template::plan(&manifest, &spec, &resolved)?;
     if args.verify && !plan.actions.contains(&PlannedAction::Verify) {
         plan.actions.push(PlannedAction::Verify);
@@ -356,4 +381,48 @@ fn print_done(plan: &Plan) {
     eprintln!("下一步:");
     eprintln!("  cd {}", plan.root.display());
     eprintln!("  ./gradlew build        # 构建插件 jar");
+}
+
+/// Capability tokens the user asked for. Must match the manifest's
+/// `[features] implemented` vocabulary (CLI words, e.g. `update-check`).
+pub fn requested_features(spec: &ProjectSpec) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    let f = &spec.features;
+    if f.sqlite {
+        out.push("sqlite");
+    }
+    if f.bstats {
+        out.push("bstats");
+    }
+    if f.update_check {
+        out.push("update-check");
+    }
+    if f.placeholderapi {
+        out.push("placeholderapi");
+    }
+    if f.gui {
+        out.push("gui");
+    }
+    if f.spotbugs {
+        out.push("spotbugs");
+    }
+    if f.coverage {
+        out.push("coverage");
+    }
+    if f.release_ci {
+        out.push("release-ci");
+    }
+    if spec.example {
+        out.push("example");
+    }
+    if spec.permissions {
+        out.push("permissions");
+    }
+    if spec.quality.checkstyle || spec.quality.unit_tests || spec.quality.ci {
+        out.push("quality");
+    }
+    if spec.git {
+        out.push("git");
+    }
+    out
 }

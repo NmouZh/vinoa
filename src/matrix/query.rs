@@ -77,13 +77,22 @@ pub struct ThirdPartyLib {
     pub java_min: u8,
     #[serde(default)]
     pub scope: ThirdPartyScope,
+    /// Repository ids from `[repositories]` that serve this coordinate
+    /// (`me.clip:placeholderapi` is only on `extendedclip`).
+    #[serde(default)]
+    pub repos: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GradlePlugin {
     pub version: String,
-    pub gradle_min: String,
+    /// Minimum Gradle version, from the plugin's `.module`
+    /// `org.gradle.plugin.api-version`. `None` = the plugin declares no floor
+    /// (e.g. `com.github.spotbugs`, built by Gradle 8.14.5 without one).
+    #[serde(default)]
+    pub gradle_min: Option<String>,
+    /// JVM floor from `.module` `org.gradle.jvm.version`.
     pub java: u8,
 }
 
@@ -97,12 +106,19 @@ pub struct GradleData {
     pub run_paper: GradlePlugin,
     pub run_velocity: GradlePlugin,
     pub paperweight: GradlePlugin,
+    /// `com.github.spotbugs` Gradle **plugin** (distinct from `[quality].spotbugs`,
+    /// which is the analysis tool version).
+    pub spotbugs_plugin: GradlePlugin,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PlatformData {
     pub api: String,
+    /// Repository id from `[repositories]` serving this platform's coordinates.
+    #[serde(default)]
+    pub repo: Option<String>,
+
     /// Explicit whitelist of MC versions this platform publishes for (§6.1).
     #[serde(default)]
     pub versions: Vec<String>,
@@ -154,6 +170,10 @@ pub struct PlatformData {
 pub struct MatrixData {
     pub schema: u32,
     pub generated_at: String,
+    /// Repository id → URL. Data-only for now: `Resolved` deliberately does not
+    /// expose it (the generated build keeps its repository literals in templates).
+    #[serde(default)]
+    pub repositories: BTreeMap<String, String>,
     pub java: BTreeMap<String, JavaRequirement>,
     pub quality: BTreeMap<String, String>,
     pub gradle: GradleData,
@@ -271,6 +291,7 @@ impl Matrix {
             ("run_paper", &g.run_paper),
             ("run_velocity", &g.run_velocity),
             ("paperweight", &g.paperweight),
+            ("spotbugs_plugin", &g.spotbugs_plugin),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.version.clone()))
@@ -283,6 +304,7 @@ impl Matrix {
             "run_paper" => Some(&self.data.gradle.run_paper),
             "run_velocity" => Some(&self.data.gradle.run_velocity),
             "paperweight" => Some(&self.data.gradle.paperweight),
+            "spotbugs_plugin" => Some(&self.data.gradle.spotbugs_plugin),
             _ => None,
         }
     }
@@ -290,6 +312,31 @@ impl Matrix {
     /// Third-party libraries keyed canonically (`placeholderapi`, `bstats`, `sqlite_jdbc`).
     pub fn thirdparty(&self) -> &BTreeMap<String, ThirdPartyLib> {
         &self.data.thirdparty
+    }
+
+    /// Repository id → URL (`central`, `papermc`, `extendedclip`, `spongepowered`).
+    pub fn repositories(&self) -> &BTreeMap<String, String> {
+        &self.data.repositories
+    }
+
+    /// Repository URL serving this platform's coordinates.
+    pub fn platform_repo(&self, platform: &str) -> Option<&str> {
+        let id = self.data.platform.get(platform)?.repo.as_deref()?;
+        self.data.repositories.get(id).map(String::as_str)
+    }
+
+    /// Repository URLs that serve a third-party coordinate.
+    pub fn thirdparty_repos(&self, key: &str) -> Vec<&str> {
+        self.data
+            .thirdparty
+            .get(key)
+            .map(|lib| {
+                lib.repos
+                    .iter()
+                    .filter_map(|id| self.data.repositories.get(id).map(String::as_str))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// `java_min` / `java_recommended` for an MC version (`recommended` is advisor-only, §6.3.2).
@@ -658,9 +705,20 @@ fn validate(data: &MatrixData) -> std::result::Result<(), String> {
             return Err(format!("[java] 键 {mc:?} 不是 X.Y[.Z] 形式的 MC 版本"));
         }
     }
+    for (id, url) in data.repositories.iter() {
+        if !url.starts_with("https://") {
+            return Err(format!("repositories.{id} 不是 https URL: {url:?}"));
+        }
+    }
+    let known_repo = |id: &str| data.repositories.contains_key(id);
     for (name, p) in data.platform.iter() {
         if p.api.is_empty() {
             return Err(format!("platform.{name} 缺 api"));
+        }
+        if let Some(repo) = p.repo.as_deref() {
+            if !known_repo(repo) {
+                return Err(format!("platform.{name}.repo = {repo:?} 不在 [repositories] 里"));
+            }
         }
         match p.model.as_deref() {
             Some("protocol") => {
@@ -738,6 +796,15 @@ fn validate(data: &MatrixData) -> std::result::Result<(), String> {
                 for v in p.api_versions.keys() {
                     if !p.versions.contains(v) {
                         return Err(format!("platform.{name}.api_versions 的 {v:?} 不在 versions 里"));
+                    }
+                }
+                for (key, lib) in data.thirdparty.iter() {
+                    for repo in &lib.repos {
+                        if !known_repo(repo) {
+                            return Err(format!(
+                                "thirdparty.{key}.repos 含未知仓库 id {repo:?}"
+                            ));
+                        }
                     }
                 }
             }

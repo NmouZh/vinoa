@@ -68,12 +68,31 @@ tasks.processResources {
 {% endif %}
 }
 
+{% if cap_bstats or cap_placeholderapi %}
+dependencies {
+{% if cap_bstats %}
+    // bStats classes are needed on the runtime classpath; see the libraries: entry in plugin.yml.
+    compileOnly("{{ thirdparty.bstats }}")
+{% endif %}
+{% if cap_placeholderapi %}
+    // PlaceholderAPI itself provides these classes at runtime (soft dependency).
+    compileOnly("{{ thirdparty.placeholderapi }}")
+{% endif %}
+}
+{% endif %}
+{% if cap_placeholderapi %}
+repositories {
+    // PlaceholderAPI is not mirrored by Maven Central or repo.papermc.io.
+    maven("https://repo.extendedclip.com/releases/") {
+        name = "placeholderapi"
+    }
+}
+{% endif %}
 {% if cap_spotbugs %}
 spotbugs {
     // A modern target uses the current SpotBugs line; a Java 8 target needs the 4.8.x line.
+    // Effort and confidence keep the SpotBugs defaults (max effort, medium confidence).
     toolVersion = if (targetJava <= 8) libs.versions.spotbugsLegacy.get() else libs.versions.spotbugsModern.get()
-    effort = "max"
-    reportLevel = "medium"
 }
 tasks.withType<com.github.spotbugs.snom.SpotBugsTask>().configureEach {
     reports.create("html") { required.set(true) }

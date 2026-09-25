@@ -119,17 +119,37 @@ version = "2.0.0-beta.24"             # [VM §5.4] io.papermc.paperweight.userde
 gradle_min = "9.7.1"
 java = 21
 
+[gradle.spotbugs_plugin]
+# `--features spotbugs` 用的 Gradle 插件 com.github.spotbugs —— 与 [quality].spotbugs（分析工具）
+# 是两个版本，键名区分（canonical key: spotbugs_plugin）。
+version = "6.5.11"   # plugins.gradle.org/m2 marker <release>（lastUpdated 20260820）；等价实现 com.github.spotbugs.snom:spotbugs-gradle-plugin
+# 无 gradle_min：该 .module 不声明 org.gradle.plugin.api-version（由 Gradle 8.14.5 构建），
+# 与 shadow/run-paper 那种硬地板不同；能不能跑在 Gradle 9.8 上以首次真机构建为准（§9.4 默认关）。
+java = 11            # .module org.gradle.jvm.version = 11（Gradle 9.8 的 JVM 17–27 满足）
+
+[repositories]
+# 仓库 id → URL（数据侧唯一事实源；2026-09-25 实测）。仅数据：Resolved 暂不透出，
+# 生成物当前的仓库字面量由 templates-dev 写在模板里（§8.3）。
+central         = "https://repo1.maven.org/maven2/"
+papermc         = "https://repo.papermc.io/repository/maven-public/"   # 代理 spigot-api(含 net.md-5 快照)/destroystokyo/papermc/velocity/bungeecord
+extendedclip    = "https://repo.extendedclip.com/releases/"            # 仅 PlaceholderAPI
+spongepowered   = "https://repo.spongepowered.org/repository/maven-public/"  # SpongeAPI（含 -SNAPSHOT 线）
+
 [thirdparty]
 # 三方坐标并入矩阵，矩阵是唯一写入点（§6.1/R6）。gui 不引三方库：GUI 用纯 Bukkit Inventory 自研。
 # java_min 由 jar 内 class 文件 major 实测（major 52 = Java 8）；
 # 目标模块 Java < java_min 时 resolve_with_features 必须硬报错，绝不生成构建不过的工程。
-placeholderapi = { coordinate = "me.clip:placeholderapi:2.11.6", java_min = 8, scope = "platform" }
-bstats         = { coordinate = "org.bstats:bstats-bukkit:3.2.1", java_min = 8, scope = "platform" }
-sqlite_jdbc    = { coordinate = "org.xerial:sqlite-jdbc:3.53.4.0", java_min = 8, scope = "core" }
+# 仓库归属（2026-09-25 实测）：bstats / sqlite_jdbc 在 Maven Central；
+# me.clip:placeholderapi:2.11.6 只在 https://repo.extendedclip.com/releases/（Central 与
+# repo.papermc.io/maven-public 均 404），该源字面量由 templates-dev 写在 cap_placeholderapi 平台脚本里。
+placeholderapi = { coordinate = "me.clip:placeholderapi:2.11.6", java_min = 8, scope = "platform", repos = ["extendedclip"] }
+bstats         = { coordinate = "org.bstats:bstats-bukkit:3.2.1", java_min = 8, scope = "platform", repos = ["central"] }
+sqlite_jdbc    = { coordinate = "org.xerial:sqlite-jdbc:3.53.4.0", java_min = 8, scope = "core", repos = ["central"] }
 
 [platform.bukkit]
 # 1.8.x 的唯一选择（1.8.9 用 1.8.8 制品）；Java 目标：≤1.16.5 → 8，之后取该版本 java_min（§6.3.4）。
 api = "org.spigotmc:spigot-api"
+repo = "papermc"
 java_legacy_until = "1.16.5"
 java_legacy = 8
 # 白名单 = spigot-api 有制品的 MC 版本；1.9.1 / 1.9.3 / 1.10.1 / 裸 1.16 在 [LEG §1.1] 的
@@ -211,6 +231,7 @@ versions = [
 # 1.8.x 完全没有 Paper（最早 1.9.4；1.8.9 无 Paper server 也无 paper-api 制品）。
 # 26.3 只有 ALPHA 构建（39 ALPHA / 0 STABLE）→ 不进白名单；该版本另行 selectable = false。
 api = "io.papermc.paper:paper-api"
+repo = "papermc"
 legacy_api = "com.destroystokyo.paper:paper-api"   # 1.9.4–1.16.5
 legacy_namespace_until = "1.16.5"                 # ≤1.16.5 用 com.destroystokyo.paper 命名空间
 legacy_version_until = "1.21.11"                  # ≤1.21.11 用 {MC}-R0.1-SNAPSHOT；26.1+ 用 {MC}.build.+
@@ -286,6 +307,7 @@ versions = [
 [platform.folia]
 # 区域化线程（regionised）服务端；硬下界 1.19.4，之后仍有缺口（[VM §4.1/§6.3]）。B 级（experimental）。
 api = "io.papermc.paper:paper-api"
+repo = "papermc"
 min_version = "1.19.4"
 experimental = true
 versions = [
@@ -310,6 +332,7 @@ versions = [
 [platform.velocity]
 # 代理端：协议范围，不锁 MC 版本（§6.3.5：恒可选）。4.x 需 Java 25（[VM §4.3][PROXY §0]）。
 api = "com.velocitypowered:velocity-api"
+repo = "papermc"
 model = "protocol"
 protocol_min = "1.7.2"            # ProtocolVersion.MINIMUM_VERSION（3.x/4.x 同）
 java = 25
@@ -322,6 +345,7 @@ default_api = "com.velocitypowered:velocity-api:4.2.0"   # Fill velocity 4.2.0 =
 # 代理端：大颗粒版本（major only，无逐 patch 制品，[VM §4.2/§6.5]）。
 # 默认 release 线 1.21-R0.4（Java 8，A7 行）；快照线 26.1-R0.1-SNAPSHOT（Java 17）为可选。
 api = "net.md-5:bungeecord-api"
+repo = "papermc"
 model = "major-grain"
 default = "1.21-R0.4"
 [platform.bungeecord.coordinates]
@@ -331,6 +355,7 @@ default = "1.21-R0.4"
 [platform.minestom]
 # 只有 4 个版本（[VM §4.5/§6.7]）；版本串是 dated snapshot，逐条字面写出。B 级（experimental）。
 api = "net.minestom:minestom"
+repo = "central"
 java = 25
 experimental = true
 versions = ["1.21.11", "26.1.1", "26.1.2", "26.2"]
@@ -344,6 +369,7 @@ versions = ["1.21.11", "26.1.1", "26.1.2", "26.2"]
 # SpongeAPI 线（[VM §4.4/§7] sponge_api 列）；缺口：无 1.13 / 1.14 / 裸 1.18 / 1.19 / 1.19.1
 # / 1.20.3 / 1.20.5（§6.6）。B 级（experimental）。
 api = "org.spongepowered:spongeapi"
+repo = "spongepowered"
 experimental = true
 versions = [
     "1.8.9", "1.9", "1.9.4", "1.10.2", "1.11", "1.11.2", "1.12", "1.12.1", "1.12.2", "1.15.2",

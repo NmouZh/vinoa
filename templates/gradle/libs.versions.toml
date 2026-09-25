@@ -17,8 +17,10 @@ junitModern = "{{ junitModernVersion }}"
 runPaper = "{{ runPaperVersion }}"
 {% endif %}
 {% if cap_spotbugs %}
-# Version of the SpotBugs Gradle plugin (the analysis tool version is set per module).
+# SpotBugs: the plugin version and the analysis-tool version are two different things.
 spotbugsPlugin = "{{ spotbugsPluginVersion }}"
+spotbugsLegacy = "{{ spotbugsLegacyVersion }}"
+spotbugsModern = "{{ spotbugsModernVersion }}"
 {% endif %}
 shadow = "{{ shadowVersion }}"
 

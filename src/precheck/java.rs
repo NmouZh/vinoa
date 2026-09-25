@@ -11,16 +11,36 @@ pub const FOOJAY_PLUGIN: &str = "org.gradle.toolchains.foojay-resolver-conventio
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JavaCheck {
+    /// Target bytecode level of the module (`PlatformPlan.java_target`).
     pub required: u8,
     pub platform: String,
     pub found_path: Option<String>,
+    /// `javaTarget >= 17` → the generated project uses a Java **toolchain**, so a
+    /// local JDK of that major is genuinely required. `<= 16` → the project uses
+    /// `options.release`, which needs no local JDK of the target version (only a
+    /// JVM able to run Gradle 9.x, i.e. 17–27).
+    pub required_locally: bool,
 }
 
 impl JavaCheck {
+    /// A module whose target is compiled with `options.release` is satisfied even
+    /// without a matching local JDK.
     pub fn satisfied(&self) -> bool {
-        self.found_path.is_some()
+        !self.required_locally || self.found_path.is_some()
+    }
+
+    /// `toolchain` (>= 17) vs `release` (<= 16).
+    pub fn mode(&self) -> &'static str {
+        if self.required_locally { "toolchain" } else { "release" }
     }
 }
+
+/// Lowest JVM Gradle 9.x can run on (spec §6.2).
+pub const GRADLE_JVM_MIN: u32 = 17;
+/// Highest JVM Gradle 9.x supports (spec §6.2).
+pub const GRADLE_JVM_MAX: u32 = 27;
+/// Synthetic module id used when no JVM able to run Gradle exists at all.
+pub const GRADLE_RUNNER: &str = "gradle:runner";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct JavaReport {
@@ -37,7 +57,8 @@ impl JavaReport {
     }
 
     /// Spec §11.5 `precheck` object: per-module `required`/`found`/`path`, plus
-    /// the auto-download decision.
+    /// `mode`/`required_locally` so consumers can tell a toolchain requirement from
+    /// a release target, and the auto-download decision.
     pub fn to_json(&self, auto_download: bool) -> serde_json::Value {
         let jdk: Vec<serde_json::Value> = self
             .checks
@@ -48,6 +69,8 @@ impl JavaReport {
                     "required": c.required,
                     "found": c.satisfied(),
                     "path": c.found_path.clone(),
+                    "mode": c.mode(),
+                    "required_locally": c.required_locally,
                 })
             })
             .collect();
@@ -80,7 +103,13 @@ pub fn detect(resolved: &Resolved) -> JavaReport {
 }
 
 /// Pure half of [`detect`]: pair required targets with already-discovered homes.
+///
+/// Rule (spec §10 + templates): a module whose `javaTarget >= 17` is built with a
+/// Java **toolchain** and therefore needs a local JDK of that exact major. A module
+/// with `javaTarget <= 16` is compiled with `options.release`, which needs **no**
+/// local JDK of the target version — only a JVM able to run Gradle 9.x (17–27).
 pub fn check_with_homes(resolved: &Resolved, homes: &[JavaHome]) -> JavaReport {
+    let runner = gradle_runner(homes);
     let mut checks: Vec<JavaCheck> = resolved
         .platforms
         .iter()
@@ -90,15 +119,59 @@ pub fn check_with_homes(resolved: &Resolved, homes: &[JavaHome]) -> JavaReport {
             } else {
                 plan.gradle_path.clone()
             };
-            let found = homes
-                .iter()
-                .find(|h| h.major == u32::from(plan.java_target))
-                .map(|h| h.path.to_string_lossy().to_string());
-            JavaCheck { required: plan.java_target, platform: module, found_path: found }
+            let target = u32::from(plan.java_target);
+            if target >= GRADLE_JVM_MIN {
+                // Toolchain path: the exact major must be present.
+                let found = homes
+                    .iter()
+                    .find(|h| h.major == target)
+                    .map(|h| h.path.to_string_lossy().to_string());
+                JavaCheck {
+                    required: plan.java_target,
+                    platform: module,
+                    found_path: found,
+                    required_locally: true,
+                }
+            } else {
+                // `options.release` path: report the Gradle-running JVM that will
+                // actually invoke the compiler, and mark it as not locally required.
+                let found_path = runner.map(|h| {
+                    format!(
+                        "{}（options.release→{}，无需本机 JDK {}）",
+                        h.path.display(),
+                        target,
+                        target
+                    )
+                });
+                JavaCheck {
+                    required: plan.java_target,
+                    platform: module,
+                    found_path,
+                    required_locally: false,
+                }
+            }
         })
         .collect();
+    // With no Gradle-runnable JVM at all, even `options.release` modules cannot be
+    // compiled — surface that as a single explicit check instead of blaming a
+    // target JDK that is not needed.
+    if runner.is_none() {
+        checks.push(JavaCheck {
+            required: GRADLE_JVM_MIN as u8,
+            platform: GRADLE_RUNNER.to_string(),
+            found_path: None,
+            required_locally: true,
+        });
+    }
     checks.sort_by(|a, b| a.platform.cmp(&b.platform));
     JavaReport { checks, gradle_version: Some(resolved.gradle_version.clone()) }
+}
+
+/// First discovered JVM Gradle 9.x can actually run on (17–27).
+fn gradle_runner(homes: &[JavaHome]) -> Option<&JavaHome> {
+    homes
+        .iter()
+        .find(|h| (GRADLE_JVM_MIN..=GRADLE_JVM_MAX).contains(&h.major))
 }
 
 /// Detection order is fixed by spec §10: `JAVA_HOME` → `PATH` → common dirs.
@@ -314,31 +387,80 @@ mod tests {
         }
     }
 
+    /// A `<= 16` target is compiled with `options.release`: a local JDK of that
+    /// major must **not** be reported as missing (the bug Lead reported).
     #[test]
-    fn missing_jdk_reports_required_and_found_structure() {
-        // Only Java 21 exists on this machine.
+    fn release_targets_do_not_require_a_local_jdk() {
+        // Only Java 21 present — no Java 8 anywhere.
         let homes = vec![JavaHome::new(21, "/usr/lib/jvm/java-21-openjdk")];
-        let report = check_with_homes(&resolved_with(&[("paper", 21), ("bukkit", 8)]), &homes);
+        let report = check_with_homes(&resolved_with(&[("bungeecord", 8)]), &homes);
+        assert!(report.all_satisfied(), "release target must not be missing: {:?}", report.checks);
 
+        let bc = report.checks.iter().find(|c| c.platform == "platforms:bungeecord").unwrap();
+        assert_eq!(bc.required, 8);
+        assert!(!bc.required_locally);
+        assert_eq!(bc.mode(), "release");
+        assert!(bc.satisfied());
+        let path = bc.found_path.as_deref().unwrap();
+        assert!(path.contains("options.release"), "{path}");
+        assert!(path.contains("无需本机 JDK 8"), "{path}");
+
+        let json = report.to_json(false);
+        let entry = &json["jdk"][0];
+        assert_eq!(entry["module"], "platforms:bungeecord");
+        assert_eq!(entry["required"], 8);
+        assert_eq!(entry["found"], true);
+        assert_eq!(entry["mode"], "release");
+        assert_eq!(entry["required_locally"], false);
+    }
+
+    /// `>= 17` targets use a toolchain: a missing local JDK *is* a real problem.
+    #[test]
+    fn missing_toolchain_jdk_is_reported() {
+        let homes = vec![JavaHome::new(8, "/jdk8")];
+        let report = check_with_homes(&resolved_with(&[("paper", 21)]), &homes);
         assert!(!report.all_satisfied());
+
         let paper = report.checks.iter().find(|c| c.platform == "platforms:paper").unwrap();
         assert_eq!(paper.required, 21);
-        assert!(paper.satisfied());
-        assert_eq!(paper.found_path.as_deref(), Some("/usr/lib/jvm/java-21-openjdk"));
-
-        let bukkit = report.checks.iter().find(|c| c.platform == "platforms:bukkit").unwrap();
-        assert_eq!(bukkit.required, 8);
-        assert!(!bukkit.satisfied());
-        assert_eq!(bukkit.found_path, None);
+        assert!(paper.required_locally);
+        assert_eq!(paper.mode(), "toolchain");
+        assert!(!paper.satisfied());
+        assert_eq!(paper.found_path, None);
 
         let json = report.to_json(true);
-        assert_eq!(json["jdk"][0]["module"], "platforms:bukkit");
-        assert_eq!(json["jdk"][0]["required"], 8);
-        assert_eq!(json["jdk"][0]["found"], false);
-        assert_eq!(json["jdk"][0]["path"], serde_json::Value::Null);
+        let entry = json["jdk"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["module"] == "platforms:paper")
+            .unwrap();
+        assert_eq!(entry["required"], 21);
+        assert_eq!(entry["found"], false);
+        assert_eq!(entry["path"], serde_json::Value::Null);
+        assert_eq!(entry["mode"], "toolchain");
         assert_eq!(json["auto_download"]["enabled"], true);
         assert_eq!(json["auto_download"]["plugin"], FOOJAY_PLUGIN);
         assert_eq!(report.gradle_version.as_deref(), Some("9.8.0"));
+    }
+
+    /// No JVM Gradle can run on (17–27) → one explicit check, not a bogus target
+    /// JDK complaint.
+    #[test]
+    fn missing_gradle_runner_is_a_single_explicit_check() {
+        let homes = vec![JavaHome::new(8, "/jdk8")];
+        let report = check_with_homes(&resolved_with(&[("bukkit", 8)]), &homes);
+
+        assert!(!report.all_satisfied());
+        let missing: Vec<&str> = report.missing().iter().map(|c| c.platform.as_str()).collect();
+        assert_eq!(missing, vec![GRADLE_RUNNER]);
+
+        let bukkit = report.checks.iter().find(|c| c.platform == "platforms:bukkit").unwrap();
+        assert!(bukkit.satisfied(), "the target JDK itself is not required");
+        assert!(!bukkit.required_locally);
+        let runner = report.checks.iter().find(|c| c.platform == GRADLE_RUNNER).unwrap();
+        assert_eq!(runner.required, 17);
+        assert!(runner.required_locally);
     }
 
     #[test]
@@ -350,6 +472,8 @@ mod tests {
         );
         assert!(report.all_satisfied());
         assert!(report.missing().is_empty());
+        // No synthetic runner check when a 17–27 JVM exists.
+        assert!(!report.checks.iter().any(|c| c.platform == GRADLE_RUNNER));
         let json = report.to_json(false);
         assert_eq!(json["auto_download"]["enabled"], false);
         assert_eq!(json["auto_download"]["plugin"], serde_json::Value::Null);

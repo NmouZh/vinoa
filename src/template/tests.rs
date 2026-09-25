@@ -91,16 +91,23 @@ fn resolved_for(spec: &ProjectSpec) -> Resolved {
         };
         platforms.insert(p, plan);
     }
+    // Mirror the canonical matrix `[thirdparty]` keys/coordinates.
     let mut thirdparty = BTreeMap::new();
     thirdparty.insert("placeholderapi".to_string(), "me.clip:placeholderapi:2.11.6".to_string());
+    thirdparty.insert("bstats".to_string(), "org.bstats:bstats-bukkit:3.2.1".to_string());
+    thirdparty.insert("sqlite_jdbc".to_string(), "org.xerial:sqlite-jdbc:3.53.4.0".to_string());
     let mut quality = BTreeMap::new();
     quality.insert("checkstyle".to_string(), "13.0.0".to_string());
     quality.insert("checkstyle_legacy".to_string(), "9.3".to_string());
-    quality.insert("junit".to_string(), "6.0.0".to_string());
+    quality.insert("junit".to_string(), "6.1.3".to_string());
     quality.insert("junit_legacy".to_string(), "5.14.4".to_string());
+    quality.insert("spotbugs".to_string(), "4.10.4".to_string());
+    quality.insert("spotbugs_legacy".to_string(), "4.8.6".to_string());
     let mut gradle_plugins = BTreeMap::new();
     gradle_plugins.insert("run_paper".to_string(), "3.1.0".to_string());
+    gradle_plugins.insert("run_velocity".to_string(), "3.1.0".to_string());
     gradle_plugins.insert("shadow".to_string(), "9.6.1".to_string());
+    gradle_plugins.insert("spotbugs_plugin".to_string(), "6.5.99".to_string());
     Resolved {
         mc_version: spec.mc_version.clone(),
         gradle_version: "9.8.0".to_string(),
@@ -729,6 +736,54 @@ path = "Metrics.java"
 }
 
 #[test]
+fn a4_is_independent_of_the_selected_platforms() {
+    // Regression: `plugin.yml` only exists for some platforms, so a velocity-only
+    // run must not report its variables as "declared but never consumed".
+    let manifest = r#"
+schema = 1
+id = "t"
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+vars = ["pluginYmlApiVersion", "packagePath", "pluginName", "packageName"]
+[[entries]]
+template = "platforms/_p_/build.gradle.kts"
+path = "platforms/{{ platform }}/build.gradle.kts"
+foreach = "platforms"
+[[entries]]
+template = "platforms/_p_/Main.java"
+path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/{{ pluginName }}.java"
+foreach = "platforms"
+[[entries]]
+template = "platforms/_p_/plugin.yml"
+path = "platforms/{{ platform }}/src/main/resources/plugin.yml"
+when = "is_paper"
+foreach = "platforms"
+"#;
+    let files = [
+        ("platforms/paper/build.gradle.kts", "// {{ platform }}\n"),
+        ("platforms/bukkit/build.gradle.kts", "// {{ platform }}\n"),
+        ("platforms/velocity/build.gradle.kts", "// {{ platform }}\n"),
+        ("platforms/paper/Main.java", "package {{ packageName }}.{{ platform }};\npublic final class {{ pluginName }} {}\n"),
+        ("platforms/bukkit/Main.java", "package {{ packageName }}.{{ platform }};\npublic final class {{ pluginName }} {}\n"),
+        ("platforms/velocity/Main.java", "package {{ packageName }}.{{ platform }};\npublic final class {{ pluginName }} {}\n"),
+        ("platforms/paper/plugin.yml", "name: {{ pluginName }}\nmain: {{ packageName }}.{{ platform }}.{{ pluginName }}\napi: {{ pluginYmlApiVersion }}\n"),
+    ];
+    let dir = write_tree(&files);
+    let m = load_from_str_with_source(manifest, SourceRef::Dir(dir.path().to_path_buf())).unwrap();
+
+    for p in ["velocity", "paper", "bukkit"] {
+        let spec = spec(&[p]);
+        let resolved = resolved_for(&spec);
+        let plan = build_plan(&m, &spec, &resolved)
+            .unwrap_or_else(|e| panic!("platform {p}: [{}] {}", e.code, e.message));
+        // The `plugin.yml` template is only consumed when paper is selected.
+        if p == "paper" {
+            assert!(plan.files.iter().any(|f| f.path.ends_with("/resources/plugin.yml")));
+        }
+    }
+}
+
+#[test]
 fn conditions_table_resolves_and_chains() {
     let manifest = r#"
 schema = 1
@@ -909,10 +964,168 @@ fn git_action_follows_the_spec_message() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn real_matrix_delivers_the_spotbugs_plugin_key() {
+    // Integration check with the *real* data file: the approved fallback must
+    // never be needed in production, and the built-in plan must stay warning-free.
+    let matrix = crate::matrix::Matrix::builtin().expect("builtin matrix");
+    let spec = spec(&["paper", "bukkit"]);
+    let resolved = matrix
+        .resolve(&spec.mc_version, &spec.platforms)
+        .expect("resolve paper+bukkit");
+    assert_eq!(
+        resolved.gradle_plugins.get("spotbugs_plugin").map(String::as_str),
+        Some("6.5.11")
+    );
+    assert_eq!(resolved.quality.get("spotbugs").map(String::as_str), Some("4.10.4"));
+
+    let m = super::load_builtin().expect("builtin manifest");
+    let plan = build_plan_with_vars(&m, &spec, &resolved, &extra("cap_spotbugs", json!(true)))
+        .expect("spotbugs plan");
+    assert!(
+        !plan.warnings.iter().any(|w| w.contains("spotbugs")),
+        "warnings: {:?}",
+        plan.warnings
+    );
+}
+
+#[test]
 fn builtin_manifest_parses_and_validates() {
     let m = super::load_builtin().expect("builtin manifest must parse");
     assert_eq!(m.schema, 1);
     assert!(m.entries.len() >= 20);
+}
+
+#[test]
+fn every_template_file_is_referenced_by_the_manifest() {
+    // Keeps manifest and content in sync: a template file that no entry points
+    // at can never be generated (that is exactly the "content landed but the
+    // manifest forgot" failure mode). Add the entry, or delete the file.
+    let m = super::load_builtin().expect("builtin manifest");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates");
+
+    let mut referenced: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for e in &m.entries {
+        let raw = match &e.template {
+            Some(t) => t.clone(),
+            None => {
+                if e.path.contains("{{") {
+                    continue;
+                }
+                e.path.clone()
+            }
+        };
+        match e.foreach.as_deref() {
+            Some("platforms") => {
+                for p in crate::types::PLATFORMS {
+                    referenced.insert(raw.replace("_p_", p));
+                }
+            }
+            _ => {
+                referenced.insert(raw);
+            }
+        }
+    }
+
+    let mut unreferenced = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read templates dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let rel = path
+                    .strip_prefix(&root)
+                    .expect("under templates/")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if rel == "vinoa-template.toml" {
+                    continue;
+                }
+                if !referenced.contains(&rel) {
+                    unreferenced.push(rel);
+                }
+            }
+        }
+    }
+    unreferenced.sort();
+    assert!(
+        unreferenced.is_empty(),
+        "模板文件没有被任何清单条目引用（新增内容请同步清单）：{unreferenced:?}"
+    );
+}
+
+/// Diagnostic used before flipping a token into `[features] implemented`:
+/// renders the built-in set with each optional capability enabled and prints
+/// whether the engine can produce a full plan (Lead's `assemble` gate is the
+/// authoritative check; this catches missing context variables early).
+#[test]
+fn matrix_values_win_over_builtin_fallbacks() {
+    // `spotbugs_plugin` now exists in the matrix; the §9.5-style fallback must
+    // stay silent and must never shadow it.
+    let m = super::load_builtin().expect("builtin manifest");
+    let spec = spec(&["paper", "bukkit"]);
+    let resolved = resolved_for(&spec);
+    let plan = build_plan_with_vars(&m, &spec, &resolved, &extra("cap_spotbugs", json!(true))).unwrap();
+    let catalog = plan
+        .files
+        .iter()
+        .find(|f| f.path == "gradle/libs.versions.toml")
+        .expect("catalog");
+    let body = String::from_utf8_lossy(&catalog.content);
+    assert!(body.contains("spotbugsPlugin = \"6.5.99\""), "{body}");
+    assert!(!plan.warnings.iter().any(|w| w.contains("spotbugs_plugin")));
+}
+
+#[test]
+fn missing_matrix_key_falls_back_loudly() {
+    // Lead-approved: a missing matrix key uses the built-in default *and* warns,
+    // so the gap is visible instead of silent.
+    let m = super::load_builtin().expect("builtin manifest");
+    let spec = spec(&["paper", "bukkit"]);
+    let mut resolved = resolved_for(&spec);
+    resolved.gradle_plugins.remove("spotbugs_plugin");
+    let plan = build_plan_with_vars(&m, &spec, &resolved, &extra("cap_spotbugs", json!(true))).unwrap();
+    let catalog = plan
+        .files
+        .iter()
+        .find(|f| f.path == "gradle/libs.versions.toml")
+        .expect("catalog");
+    let body = String::from_utf8_lossy(&catalog.content);
+    assert!(body.contains("spotbugsPlugin = \"6.5.11\""), "{body}");
+    assert!(
+        plan.warnings.iter().any(|w| w.contains("spotbugs_plugin")),
+        "warnings: {:?}",
+        plan.warnings
+    );
+}
+
+#[test]
+fn feature_render_diagnostic() {
+    let m = super::load_builtin().expect("builtin manifest");
+    let features = [
+        ("sqlite", "cap_sqlite"),
+        ("bstats", "cap_bstats"),
+        ("update-check", "cap_update_check"),
+        ("placeholderapi", "cap_placeholderapi"),
+        ("gui", "cap_gui"),
+        ("spotbugs", "cap_spotbugs"),
+        ("coverage", "cap_coverage"),
+        ("release-ci", "cap_release_ci"),
+    ];
+    for (token, key) in features {
+        let spec = spec(&["paper", "bukkit"]);
+        let resolved = resolved_for(&spec);
+        let mut extras = BTreeMap::new();
+        extras.insert(key.to_string(), json!(true));
+        if token == "bstats" {
+            extras.insert("bstatsPluginId".to_string(), json!(12345));
+        }
+        match build_plan_with_vars(&m, &spec, &resolved, &extras) {
+            Ok(p) => eprintln!("feature {token:16} -> OK ({} files, {} warnings) {:?}", p.files.len(), p.warnings.len(), p.warnings),
+            Err(e) => eprintln!("feature {token:16} -> [{}] {}", e.code, e.message),
+        }
+    }
 }
 
 #[test]
@@ -967,21 +1180,11 @@ fn builtin_consumed_vars_diagnostic() {
         let contexts: Vec<(Option<String>, serde_json::Map<String, Value>)> = match e.foreach.as_deref() {
             Some("platforms") => platforms
                 .iter()
-                .map(|p| (Some(p.clone()), vars::loop_scope(&ctx, p)))
+                .map(|p| (Some(p.clone()), serde_json::Map::new()))
                 .collect(),
-            _ => vec![(None, ctx.clone())],
+            _ => vec![(None, serde_json::Map::new())],
         };
-        for (platform, ictx) in contexts {
-            if let Some(w) = &e.when {
-                match eval_condition(w, &ictx) {
-                    Ok(true) => {}
-                    Ok(false) => continue,
-                    Err(err) => {
-                        eprintln!("when `{w}` -> {}", err.message);
-                        continue;
-                    }
-                }
-            }
+        for (platform, _ictx) in contexts {
             let src_path = match &platform {
                 Some(p) => raw_src.replace("_p_", p),
                 None => raw_src.clone(),

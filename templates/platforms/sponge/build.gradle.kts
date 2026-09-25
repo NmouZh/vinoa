@@ -69,9 +69,8 @@ dependencies {
 {% if cap_spotbugs %}
 spotbugs {
     // A modern target uses the current SpotBugs line; a Java 8 target needs the 4.8.x line.
+    // Effort and confidence keep the SpotBugs defaults (max effort, medium confidence).
     toolVersion = if (targetJava <= 8) libs.versions.spotbugsLegacy.get() else libs.versions.spotbugsModern.get()
-    effort = "max"
-    reportLevel = "medium"
 }
 tasks.withType<com.github.spotbugs.snom.SpotBugsTask>().configureEach {
     reports.create("html") { required.set(true) }

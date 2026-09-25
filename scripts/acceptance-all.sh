@@ -16,7 +16,7 @@ run_row() { # mc platform expect_build
     if [ "$expect" = "build" ]; then
       timeout 1800 ./gradlew build --no-daemon >build.log 2>&1 || exit 22
     else
-      timeout 900 ./gradlew dependencies --configuration compileClasspath >build.log 2>&1 || exit 23
+      timeout 1200 ./gradlew assemble --no-daemon >build.log 2>&1 || exit 23
     fi
   )
   local rc=$?

@@ -13,6 +13,23 @@ authors:
   - '{{ a }}'
 {% endfor %}
 {% endif %}
+{% if cap_placeholderapi %}
+softdepend:
+  - PlaceholderAPI
+{% endif %}
+{% if cap_libraries and cap_bstats or cap_libraries and cap_sqlite or cap_libraries and cap_placeholderapi %}
+# Downloaded by the server and added to the plugin classpath (Minecraft 1.16.5 and newer).
+libraries:
+{% if cap_bstats %}
+  - {{ thirdparty.bstats }}
+{% endif %}
+{% if cap_sqlite %}
+  - {{ thirdparty.sqlite_jdbc }}
+{% endif %}
+{% if cap_placeholderapi %}
+  - {{ thirdparty.placeholderapi }}
+{% endif %}
+{% endif %}
 commands:
   {{ commandName }}:
     description: '{{ pluginDescription }}'

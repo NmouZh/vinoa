@@ -360,12 +360,19 @@ fn matrix_carries_the_canonical_tooling_keys() {
         assert!(q.contains_key(key), "quality.{key} missing");
     }
     let gp = matrix.gradle_plugins();
-    for key in ["shadow", "run_paper", "run_velocity", "paperweight"] {
+    for key in ["shadow", "run_paper", "run_velocity", "paperweight", "spotbugs_plugin"] {
         assert!(gp.contains_key(key), "gradle_plugins.{key} missing");
     }
-    assert_eq!(matrix.gradle_plugin("shadow").unwrap().gradle_min, "9.2.0");
-    assert_eq!(matrix.gradle_plugin("run_paper").unwrap().gradle_min, "9.7.0");
+    assert_eq!(matrix.gradle_plugin("shadow").unwrap().gradle_min.as_deref(), Some("9.2.0"));
+    assert_eq!(matrix.gradle_plugin("run_paper").unwrap().gradle_min.as_deref(), Some("9.7.0"));
     assert_eq!(matrix.gradle_plugin("paperweight").unwrap().java, 21);
+    // Gradle *plugin* version is distinct from the analysis *tool* version
+    let sb = matrix.gradle_plugin("spotbugs_plugin").unwrap();
+    assert_eq!(sb.version, "6.5.11");
+    assert_eq!(sb.java, 11);
+    assert_eq!(sb.gradle_min, None, "com.github.spotbugs declares no api-version floor");
+    assert_eq!(gp["spotbugs_plugin"], "6.5.11");
+    assert_eq!(matrix.quality()["spotbugs"], "4.10.4");
     // thirdparty canonical keys, gui deliberately absent (pure Bukkit Inventory)
     let tp = matrix.thirdparty();
     assert_eq!(
@@ -388,7 +395,39 @@ fn resolved_carries_quality_gradle_and_thirdparty_maps() {
     assert_eq!(r.quality["checkstyle"], "10.24.0");
     assert_eq!(r.quality["checkstyle_legacy"], "9.3");
     assert_eq!(r.gradle_plugins["run_paper"], "3.1.0");
+    assert_eq!(r.gradle_plugins["spotbugs_plugin"], "6.5.11");
     assert_eq!(r.thirdparty.len(), 3);
+}
+
+#[test]
+fn repositories_are_data_driven() {
+    let matrix = m();
+    let repos = matrix.repositories();
+    assert_eq!(repos["central"], "https://repo1.maven.org/maven2/");
+    assert_eq!(repos["papermc"], "https://repo.papermc.io/repository/maven-public/");
+    // PlaceholderAPI is NOT on Central/papermc (both 404) — only extendedclip serves it
+    assert_eq!(
+        matrix.thirdparty_repos("placeholderapi"),
+        vec!["https://repo.extendedclip.com/releases/"]
+    );
+    assert_eq!(matrix.thirdparty_repos("bstats"), vec!["https://repo1.maven.org/maven2/"]);
+    assert!(matrix.thirdparty_repos("nope").is_empty());
+    // platforms: papermc covers the spigot/papermc/bungee family, Central Minestom,
+    // spongepowered the SpongeAPI lines (incl. -SNAPSHOT)
+    for p in ["paper", "bukkit", "folia", "velocity", "bungeecord"] {
+        assert!(matrix.platform_repo(p).unwrap().contains("repo.papermc.io"), "{p}");
+    }
+    assert!(matrix.platform_repo("minestom").unwrap().contains("repo1.maven.org"));
+    assert!(matrix.platform_repo("sponge").unwrap().contains("repo.spongepowered.org"));
+    // every platform declares one, and a corrupt repo id is rejected at load time
+    for p in matrix.platform_ids() {
+        assert!(matrix.platform_repo(&p).is_some(), "{p} has no repo");
+    }
+    let bad = synthetic_matrix(8).replace(
+        "repo = \"central\"",
+        "repo = \"nowhere\"",
+    );
+    assert_eq!(Matrix::load_from_str(&bad).unwrap_err().code, "config.invalid");
 }
 
 // ------------------------------------------------------- third-party Java floors
@@ -637,11 +676,19 @@ version = "2.0.0-beta.24"
 gradle_min = "9.7.1"
 java = 21
 
+[gradle.spotbugs_plugin]
+version = "6.5.11"
+java = 11
+
+[repositories]
+central = "https://repo1.maven.org/maven2/"
+
 [thirdparty]
-heavy = {{ coordinate = "com.example:heavy:1.0", java_min = {heavy_java_min}, scope = "core" }}
+heavy = {{ coordinate = "com.example:heavy:1.0", java_min = {heavy_java_min}, scope = "core", repos = ["central"] }}
 
 [platform.bukkit]
 api = "org.spigotmc:spigot-api"
+repo = "central"
 java_legacy_until = "1.16.5"
 java_legacy = 8
 versions = ["1.8.9"]

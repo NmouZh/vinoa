@@ -25,3 +25,12 @@ permissions:
     children:
       {{ permissionNode }}.example: true
 {% endif %}
+{% if cap_placeholderapi %}
+# Soft dependency in the Paper plugin format: the plugin still loads without PlaceholderAPI.
+dependencies:
+  server:
+    PlaceholderAPI:
+      load: BEFORE
+      required: false
+      join-classpath: false
+{% endif %}
