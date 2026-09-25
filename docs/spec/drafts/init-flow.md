@@ -1,4 +1,4 @@
-# vinoa `init` 执行流程（草稿 v6）
+# vinoa `init` 执行流程（草稿 v7）
 
 > 供 ticket [#17 init 的执行流程与阶段划分](https://github.com/NmouZh/vinoa/issues/17) 与 [#10 旧版本与多 Java 目标兼容路径](https://github.com/NmouZh/vinoa/issues/10) 讨论用。
 > 交互形态按用户要求对齐 **IDEA 的"新建项目"向导**：逐页填写，字段与顺序照它。内部阶段划分见附录。
@@ -73,12 +73,39 @@ $ vinoa init
 （答 n：不加该插件，并提示“构建前需自行安装 Java 25，否则 ./gradlew build 会失败”）
 ```
 
-## 2. 非交互等价命令（AI / CI 路径）
+## 2. 命令行界面（非交互 / AI / CI 路径）
+
+设计原则：**向导负责交互，参数只服务“无人可问”的场景**。高频的给短参数，其余全部走配置文件；不搞一族 `--with-xxx`。
+
+```
+$ vinoa init --help
+用法: vinoa init [名称] [选项]
+
+参数:
+  [名称]                  工程名；省略则在当前目录生成
+
+常用:
+  -p, --package <包名>     Java 包名（默认 com.example.<名称>）
+  -m, --mc <版本>          目标 Minecraft 版本（如 1.21.11）
+      --platform <平台>    目标平台，可重复
+      --features <列表>    附加模块，逗号分隔：sqlite,bstats,update-check,placeholderapi,gui
+  -y, --yes               全部用默认值，不询问
+      --dry-run           只打印将要生成的内容
+      --json              以 JSON 输出（给脚本 / agent 解析）
+      --verify            生成后跑一次构建验证
+
+高级:
+  -c, --config <文件>      从 TOML 读取全部答案（与向导等价，可版本化、可进仓库）
+      --print-config       把本次选择导成 TOML，配合 -c 用
+      --metadata / --license / --author / --description / --lang
+      --no-git / --no-example / --no-permissions / --no-quality
+```
+
+等价命令示例：
 
 ```bash
-vinoa init --name my-plugin --package com.example.myplugin \
-  --platform paper --mc 1.21.11 --lang zh --license Apache-2.0 \
-  --git --yes
+vinoa init my-plugin -p com.example.myplugin \
+  -m 1.21.11 --platform paper --features sqlite,bstats -y
 ```
 
 - `--dry-run`：只打印"预检 + 即将创建"那一段（同一份计划，保证"预览即实际"）。
