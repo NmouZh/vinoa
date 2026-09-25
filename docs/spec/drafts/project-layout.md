@@ -49,11 +49,78 @@ my-plugin/
          # 注解处理器直接生成 velocity-plugin.json 到 jar 根，无需 resources
 ```
 
-## 仍未定（下一轮要拍）
+## 已定（2026-09-25 补充：上一轮六个未定项全部收口）
 
-1. **paper 与 bukkit 是否合并成一个模块**：Paper 是 Bukkit 超集，勾 paper 时 bukkit 模块可能是冗余的一层；合并则少一层目录、但"纯 Bukkit 兼容"的语义会模糊。
-2. **每个平台模块的 Java 目标**：Velocity 要 Java 25，BungeeCord release 线还是 Java 8——平台模块不能共用 toolchain 已确定，但**具体每个模块写多少**要等 [老版本构建可行性](https://github.com/NmouZh/vinoa/issues/8) 的结论。
-3. **质量工程在旧版本模块上的降级**：checkstyle / spotbugs / JUnit 版本随 Java 目标变化（同样等 #8）。
-4. **冷门平台（sponge / minestom / nukkit / folia）是否标实验性**：影响 `settings.gradle.kts` 注释与 init 交互里的提示文案。
-5. **`gradle/libs.versions.toml` 的组织方式**：平台坐标是按平台分节，还是集中一节（要能被未来的 `build` 命令复用）。
-6. **`core/` 的边界**：只放接口，还是允许放共享业务代码（当前草稿按"接口 + 示例业务代码"）。
+### 1. paper 与 bukkit：两个模块，勾 paper 自动带 bukkit
+
+（用户拍板）`platforms/paper` 用 `paper-api`（可用 Paper 专属能力），`platforms/bukkit` 用 `spigot-api`（也能跑 Spigot）。init 里勾 `paper` 时自动 `include("platforms:bukkit")`；只勾 bukkit 时不带 paper。
+
+### 2. 每个模块的 Java 目标
+
+| 模块 | Java 目标 |
+|---|---|
+| `paper` / `folia` | 该 MC 版本的 `java_min`（1.21.11 → 21；26.2 → 25） |
+| `bukkit` | 1.8.9–1.16.x → **8**；之后用该版本的 `java_min` |
+| `velocity` | **25**（Velocity 4.x） |
+| `bungeecord` | **8**（release 线 `1.21-R0.4`；快照线已到 17） |
+| `sponge` | 按所用 `spongeapi` 版本的要求 |
+| `minestom` | **25** |
+| `core` | **所有已启用模块中最低的那个目标** |
+
+**关键约束**：`core/` 必须编译在启用模块里最低的 Java 目标上——勾了 bukkit(8) + paper(21) 时，`core` 就得是 8，否则低版本平台模块根本无法依赖它。
+
+### 3. 质量工程在旧版本模块上的降级
+
+| 目标 | Checkstyle | SpotBugs | JUnit |
+|---|---|---|---|
+| Java 8 | 9.3（最后支持） | 4.8.6（最后支持） | 5.14.4（最后一条 Java 8 线） |
+| Java 11+ | Gradle 默认 10.24.0 | 最新 | 5.x |
+| Java 17+ | 13+ | 最新 | 6.x |
+
+注意：Checkstyle / SpotBugs 跑在 **Gradle 的 JVM** 上，不要求目标 JDK；上表是"能分析 Java 8 字节码"的下界。**JUnit 6 需要 Java 17**，所以老版本模块的测试只能用 5.x。
+
+### 4. 冷门平台标实验性
+
+`sponge` / `minestom` / `folia` 在向导里带 **experimental** 标注，生成的 README 里也注明，且**不进承诺矩阵**（best-effort）。`minestom` 另加提示：只支持 `1.21.11` / `26.1.1` / `26.1.2` / `26.2` 四个版本。
+
+### 5. `gradle/libs.versions.toml` 的组织
+
+```toml
+[versions]
+paperApiVersion  = "1.21.11-R0.1-SNAPSHOT"   # 由版本矩阵写入，不手改
+spigotApiVersion = "1.8.8-R0.1-SNAPSHOT"
+checkstyle       = "10.24.0"
+junit            = "5.14.4"
+
+[libraries]
+paper-api  = { module = "io.papermc.paper:paper-api",  version.ref = "paperApiVersion" }
+spigot-api = { module = "org.spigotmc:spigot-api",     version.ref = "spigotApiVersion" }
+
+[plugins]
+shadow    = { id = "com.gradleup.shadow",        version = "9.6.1" }
+run-paper = { id = "xyz.jpenilla.run-paper",     version = "3.1.0" }
+```
+
+规则：
+- 每个启用的平台一个 `[versions]` 条目，**模块只引用、不硬编码**——这是未来 `build` 命令能复用版本矩阵的前提。
+- 平台坐标一律来自矩阵的查找表（见 [version-matrix.md](version-matrix.md)），禁止字符串拼接。
+- 不再额外生成 `gradle.properties` 里的版本号，避免两处真相。
+
+### 6. `core/` 的边界
+
+- **放**：平台无关接口（`Command` / `Config` / `Message` / `Scheduler` / `Sender` / `MenuService` 能力接口）+ 纯逻辑（参数解析、消息格式化、配置模型）+ 示例业务代码（示范"共享逻辑长什么样"）。
+- **禁止**：import 任何平台 API（`org.bukkit` / `io.papermc` / `com.velocitypowered` / `net.md_5`）。由质量工程里的 import 检查保证，并写进验收。
+- 平台模块只做三件事：bootstrap 入口、平台 API 适配、资源文件。
+
+### 生成出来的 `settings.gradle.kts`
+
+```kotlin
+rootProject.name = "my-plugin"
+include("core")
+include("platforms:paper")
+include("platforms:bukkit")   // 勾 paper 自动带上
+```
+
+## 仍未定
+
+- 无（本票的决策项已全部收口）。
