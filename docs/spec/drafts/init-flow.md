@@ -1,4 +1,4 @@
-# vinoa `init` 执行流程（草稿 v7）
+# vinoa `init` 执行流程（草稿 v8）
 
 > 供 ticket [#17 init 的执行流程与阶段划分](https://github.com/NmouZh/vinoa/issues/17) 与 [#10 旧版本与多 Java 目标兼容路径](https://github.com/NmouZh/vinoa/issues/10) 讨论用。
 > 交互形态按用户要求对齐 **IDEA 的"新建项目"向导**：逐页填写，字段与顺序照它。内部阶段划分见附录。
@@ -138,6 +138,9 @@ vinoa init my-plugin -p com.example.myplugin \
 9. **paper 与 bukkit**：分成两个模块，但勾 `paper` 时**自动带上** `platforms/bukkit`（无须用户再勾一次）。
 10. **许可证**：工具自身与生成物都用 **Apache-2.0**（clean-room，README 注明参考来源，不复制代码正文）。
 11. **④ 附加页默认值**：示例代码 / 权限声明 / 质量工程 / git 初始化 **默认勾**；SQLite / bStats / 更新检查 / PlaceholderAPI / GUI 菜单 **默认不勾**（挑上就生成）。
+12. **界面语言**：跟随系统语言（中文系统显示中文，否则英文），可用 `--ui-lang` 覆盖。注意它与**生成物语言**是两个独立概念。
+13. **生成物语言**：注释与 README 跟随向导里选的生成物语言（中文 / English / 双语）；玩家可见的消息也跟随它。
+14. **Windows 正式支持**：原生 `cmd` / PowerShell 也是目标环境（向导界面需跨平台适配，路径与 `git init` 行为要一起考虑）。
 
 **内部实现选择（用户不必关心，可随时推翻）**：采用"先算完整计划 → 落盘只执行计划"的单一代码路径，使 `--dry-run` 的输出与实际写入必然一致；阶段划分见附录。
 
