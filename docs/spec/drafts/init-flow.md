@@ -1,4 +1,4 @@
-# vinoa `init` 执行流程（草稿 v3）
+# vinoa `init` 执行流程（草稿 v4）
 
 > 供 ticket [#17 init 的执行流程与阶段划分](https://github.com/NmouZh/vinoa/issues/17) 与 [#10 旧版本与多 Java 目标兼容路径](https://github.com/NmouZh/vinoa/issues/10) 讨论用。
 > 主体是**用户可见的完整流程**；内部阶段划分见附录。本文件随决策持续更新。
@@ -64,8 +64,11 @@ vinoa 0.1.0 · 交互式创建 Minecraft 服务端插件工程
 本机环境预检:
   Java 21  ✓ /usr/lib/jvm/java-21-openjdk        （paper 模块需要）
   Java 25  ✗ 未检测到                            （velocity 模块需要）
-  → 已为你启用 Gradle toolchain 自动下载，首次构建会自动获取 Java 25。
-    也可以先自行安装后重跑：vinoa init --check-only
+
+? 缺少的 Java 25 是否让 Gradle 首次构建时自动下载？ (Y/n) y
+  → 已在生成的工程中启用 toolchain 自动下载（foojay-resolver-convention）
+
+（答 n 时：不加该插件，并提示“构建前需自行安装 Java 25，否则 ./gradlew build 会失败”）
 ```
 
 ## 2. 非交互等价命令（AI / CI 路径）
@@ -80,6 +83,7 @@ vinoa init --name my-plugin --package com.example.myplugin \
 - `--json`：把计划 / 预检结果 / 结果输出成结构化 JSON，供 agent 解析。
 - `--yes`：跳过确认；非 TTY 环境下自动等价于 `--yes`。
 - 缺必填参数且无法询问 → 报错退出并列出缺失项（不挂起）。
+- 非交互下"缺 Java 是否自动下载"由 `--download-jdk / --no-download-jdk` 决定（默认跟随 `--yes` 的保守值：不下载）。
 
 ## 3. 失败时用户看到什么
 
@@ -87,7 +91,7 @@ vinoa init --name my-plugin --package com.example.myplugin \
 |---|---|
 | 目标目录非空 | `目录已存在且非空`，列出冲突文件，给出 `--output <other>` 或明确拒绝（默认不覆盖） |
 | 平台 × 版本组合不存在 | 明确报错 + 可用组合列表（交互路径下根本选不到） |
-| **本机缺所需 Java** | 列出"哪个模块需要哪个 Java、当前装了什么"，说明 Gradle toolchain 会自动下载（见 §5）；**不阻塞生成** |
+| **本机缺所需 Java** | 列出"哪个模块需要哪个 Java、当前装了什么"，并**询问是否让 Gradle 自动下载**；不阻塞生成 |
 | 版本矩阵联网刷新失败 | 回退内置矩阵并警告；离线不阻塞生成 |
 | 中途中断 / 渲染失败 | 不留半个工程（原子落盘），说明已回滚 + 可复现命令 |
 | `--verify` 构建失败 | 工程**保留**，报告失败原因与日志路径，退出码标记"生成成功、验证失败" |
@@ -110,14 +114,13 @@ vinoa init --name my-plugin --package com.example.myplugin \
 
 1. 矩阵对每个 MC 版本给出 `java_min`（必须）与 `java_recommended`（推荐）。
 2. 多平台勾选时**按模块分别列出**所需 Java（例：bukkit 需 8、paper 需 21、velocity 需 25）。
-3. 检测本机：`JAVA_HOME` + PATH 上的 `java -version`（+ 常见安装目录，范围待定）。
-4. 结果出现在确认摘要里（✓/✗ 一眼可见），`--json` 里给出结构化结果。
-5. **缺 Java 不能悄悄放过**——否则用户拿到工程却构建不了，会以为是生成器的问题。因此：
-   - 生成的工程默认带 Gradle toolchain 自动下载（`foojay-resolver-convention`），首次构建自动拉取所需 JDK；
-   - 预检里同时说清"哪个模块缺哪个 Java、可以怎么装"。
+3. 检测本机（实现细节由我拍）：`JAVA_HOME` → PATH 上的 `java -version` → **常见安装目录扫描**（Linux `/usr/lib/jvm`、Windows `Program Files\Java` 与 Adoptium、macOS `/Library/Java/JavaVirtualMachines`、SDKMAN / asdf 目录）。不走 Gradle 进程（慢且离线不可用）；`--json` 里给出结构化结果。
+4. 结果出现在确认摘要里（✓/✗ 一眼可见）。
+5. **缺 Java 不静默、也不替用户决定**——预检发现缺失时**问一句**："是否让 Gradle 首次构建时自动下载？"
+   - 答 **是**：在生成的工程里启用 `foojay-resolver-convention`，首次构建自动拉取所需 JDK；
+   - 答 **否**：不加该插件，并明确提示"构建前需自行安装 Java X，否则 `./gradlew build` 会失败"；
+   - 无论哪条，都同时说清"哪个模块缺哪个 Java、可以怎么装"。
 6. 老版本提示：1.8.9 目标需 Java 8，且该版本**起不了本地 Paper 测试服**（Paper 没有 1.8.9），提示里必须说清。
-
-**待定（见下）**：缺 Java 时拦不拦、检测范围多大。
 
 ## 附录：内部阶段划分（用户不可见）
 
@@ -127,7 +130,7 @@ vinoa init --name my-plugin --package com.example.myplugin \
 | 1 | 输入收集 | flags + 交互补齐 | 无 |
 | 2 | 校验 | 名称/包名合法性、目录占用、平台×版本组合 | 无 |
 | 3 | 版本矩阵解析 | 锁定平台坐标 / Java 目标 / Gradle / 元数据格式 | 无 |
-| 3.5 | 环境预检 | 按已解析的 Java 目标查本机 JDK（JAVA_HOME / PATH / 常见目录），产出 ✓/✗ 清单 | 无（不阻塞） |
+| 3.5 | 环境预检 | 按已解析的 Java 目标查本机 JDK，产出 ✓/✗ 清单；缺失时触发"是否自动下载"询问 | 无（不阻塞） |
 | 4 | 计划生成 | 完整文件清单 + 内容 + 额外动作（这就是 `--dry-run` 的产物） | 无 |
 | 5 | 渲染 | 模板树 → 内存文件集（变量替换、条件文件、重命名） | 无 |
 | 6 | 落盘 | 临时目录 → 整体 rename（原子） | 回滚，无残留 |
