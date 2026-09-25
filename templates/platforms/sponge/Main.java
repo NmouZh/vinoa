@@ -10,7 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.plugin.PluginContainer;
-import org.spongepowered.plugin.builtin.jva.Plugin;
+import org.spongepowered.plugin.builtin.jvm.Plugin;
 
 /**
 {% if is_lang_en %}

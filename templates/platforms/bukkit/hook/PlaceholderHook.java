@@ -3,7 +3,6 @@ package {{ packageName }}.{{ platform }}.hook;
 import {{ packageName }}.ExampleService;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
-import org.bukkit.plugin.Plugin;
 
 /**
 {% if is_lang_en %}
@@ -28,26 +27,27 @@ import org.bukkit.plugin.Plugin;
  */
 public final class PlaceholderHook extends PlaceholderExpansion {
 
-    private final Plugin plugin;
     private final ExampleService service;
 
     /**
 {% if is_lang_en %}
-     * @param plugin the owning plugin
      * @param service the shared service that renders the placeholder value
 {% elif cap_dual_lang %}
-     * @param plugin 所属插件
      * @param service 渲染占位符取值的共享服务
-     * @param plugin the owning plugin
      * @param service the shared service that renders the placeholder value
 {% else %}
-     * @param plugin 所属插件
      * @param service 渲染占位符取值的共享服务
 {% endif %}
      */
-    public PlaceholderHook(final Plugin plugin, final ExampleService service) {
-        this.plugin = plugin;
+    public PlaceholderHook(final ExampleService service) {
         this.service = service;
+    }
+
+    @Override
+    public int hashCode() {
+        // PlaceholderExpansion inherits equals; declaring identity hashCode keeps the pair sane
+        // (and keeps SpotBugs' HE_INHERITS_EQUALS_USE_HASHCODE quiet).
+        return super.hashCode();
     }
 
     @Override
@@ -78,17 +78,4 @@ public final class PlaceholderHook extends PlaceholderExpansion {
         return null;
     }
 
-    /**
-{% if is_lang_en %}
-     * @return the plugin this expansion belongs to
-{% elif cap_dual_lang %}
-     * @return 本扩展所属的插件
-     * @return the plugin this expansion belongs to
-{% else %}
-     * @return 本扩展所属的插件
-{% endif %}
-     */
-    public Plugin plugin() {
-        return plugin;
-    }
 }

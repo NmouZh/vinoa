@@ -74,7 +74,7 @@ public final class {{ pluginName }} extends JavaPlugin {
         // Soft dependency: only register the expansion when the API is really on the classpath.
         try {
             Class.forName("me.clip.placeholderapi.PlaceholderAPI");
-            new PlaceholderHook(this, service).register();
+            new PlaceholderHook(service).register();
         } catch (ClassNotFoundException absent) {
             getLogger().info("PlaceholderAPI is not installed; the expansion stays unregistered.");
         }
