@@ -16,7 +16,9 @@ use std::process::ExitCode;
 pub fn run(args: InitArgs) -> Result<ExitCode> {
     // ── phase 0: context ────────────────────────────────────────────────────
     let matrix = Matrix::builtin()?;
-    let interactive = is_tty() && !args.yes;
+    // `cli::parse` has already merged `-c/--config` into `args`, so a config file
+    // means "every answer is supplied" and the wizard must not open.
+    let interactive = is_tty() && !args.yes && args.config.is_none();
 
     // ── phase 1: inputs (flags / config file / wizard) ──────────────────────
     let mut spec = if interactive {
@@ -27,6 +29,12 @@ pub fn run(args: InitArgs) -> Result<ExitCode> {
 
     // ── phase 2: validate ───────────────────────────────────────────────────
     validate(&spec)?;
+
+    // `--print-config` exports exactly what `-c/--config` consumes, then stops.
+    if args.print_config {
+        print!("{}", crate::cli::print_config_toml(&spec)?);
+        return Ok(ExitCode::from(EXIT_OK));
+    }
 
     // ── phase 3: matrix resolution ──────────────────────────────────────────
     let resolved = matrix::resolve(&matrix, &spec.mc_version, &spec.platforms)?;

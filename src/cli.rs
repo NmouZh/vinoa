@@ -386,7 +386,13 @@ pub fn parse() -> Result<Command> {
     };
     match cli.command {
         Some(TopCommand::Init(init)) => {
-            let args = init_args(init)?;
+            // `-c/--config` merges into the args here, at the parsing layer, so
+            // the orchestrator only ever builds a spec from `InitArgs` (§3.2).
+            let mut args = init_args(init)?;
+            if let Some(path) = args.config.clone() {
+                let cfg = load_config(std::path::Path::new(&path))?;
+                apply_config(&mut args, &cfg)?;
+            }
             if args.json {
                 crate::report::set_json_mode(true);
             }
@@ -422,24 +428,8 @@ pub fn parse() -> Result<Command> {
 }
 
 fn init_args(cli: InitCli) -> Result<InitArgs> {
-    for p in &cli.platform {
-        if !PLATFORMS.contains(&p.as_str()) {
-            return Err(error::usage(format!(
-                "未知平台 `{p}`；可用平台: {}",
-                PLATFORMS.join(", ")
-            ))
-            .with_hint("复现: vinoa init --help"));
-        }
-    }
-    for f in &cli.features {
-        if !FEATURE_NAMES.contains(&f.as_str()) {
-            return Err(error::usage(format!(
-                "未知 --features 取值 `{f}`；可用值: {}",
-                FEATURE_NAMES.join(", ")
-            ))
-            .with_hint("复现: vinoa init --help"));
-        }
-    }
+    validate_platforms(&cli.platform).map_err(|e| e.with_hint("复现: vinoa init --help"))?;
+    validate_features(&cli.features).map_err(|e| e.with_hint("复现: vinoa init --help"))?;
     if let Some(m) = &cli.metadata {
         if !METADATA_FORMATS.contains(&m.as_str()) {
             return Err(error::usage(format!(
@@ -521,6 +511,315 @@ fn init_args(cli: InitCli) -> Result<InitArgs> {
         offline: cli.offline || !cli.online,
         online: cli.online,
     })
+}
+
+// ── `-c/--config` and `--print-config` (spec §3.2) ──────────────────────────
+//
+// Single owner of the TOML answers schema. Keys mirror `types::ProjectSpec`'s
+// snake_case fields, so `--print-config > cfg.toml && vinoa init -c cfg.toml` is
+// a lossless round trip. Explicit CLI flags always win per field (no merging).
+
+/// TOML answers file. Every key is optional: unset keys fall through to the
+/// wizard/defaults, and explicit CLI flags always win.
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigFile {
+    pub target_dir: Option<String>,
+    pub project_name: Option<String>,
+    /// Derived (`PascalCase(project_name)`); exported for readability, ignored on read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_name: Option<String>,
+    pub package_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<Vec<String>>,
+    pub description: Option<String>,
+    pub mc_version: Option<String>,
+    pub platforms: Option<Vec<String>>,
+    pub metadata: Option<String>,
+    pub language: Option<String>,
+    pub ui_language: Option<String>,
+    pub license: Option<String>,
+    pub features: Option<ConfigFeatures>,
+    pub quality: Option<ConfigQuality>,
+    pub example: Option<bool>,
+    pub permissions: Option<bool>,
+    pub website: Option<String>,
+    pub git: Option<bool>,
+    pub download_jdk: Option<bool>,
+    pub bstats_id: Option<ConfigId>,
+}
+
+/// `[features]` table (snake_case, matching `types::FeatureSet`).
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigFeatures {
+    #[serde(default)]
+    pub sqlite: bool,
+    #[serde(default)]
+    pub bstats: bool,
+    #[serde(default)]
+    pub update_check: bool,
+    #[serde(default)]
+    pub placeholderapi: bool,
+    #[serde(default)]
+    pub gui: bool,
+    #[serde(default)]
+    pub spotbugs: bool,
+    #[serde(default)]
+    pub coverage: bool,
+    #[serde(default)]
+    pub release_ci: bool,
+}
+
+impl ConfigFeatures {
+    pub fn from_set(f: &crate::types::FeatureSet) -> Self {
+        Self {
+            sqlite: f.sqlite,
+            bstats: f.bstats,
+            update_check: f.update_check,
+            placeholderapi: f.placeholderapi,
+            gui: f.gui,
+            spotbugs: f.spotbugs,
+            coverage: f.coverage,
+            release_ci: f.release_ci,
+        }
+    }
+
+    /// Canonical `--features` values for everything switched on.
+    pub fn enabled(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (name, on) in [
+            ("sqlite", self.sqlite),
+            ("bstats", self.bstats),
+            ("update-check", self.update_check),
+            ("placeholderapi", self.placeholderapi),
+            ("gui", self.gui),
+            ("spotbugs", self.spotbugs),
+            ("coverage", self.coverage),
+            ("release-ci", self.release_ci),
+        ] {
+            if on {
+                out.push(name.to_string());
+            }
+        }
+        out
+    }
+}
+
+/// `[quality]` table (matching `types::QualitySet`).
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigQuality {
+    #[serde(default)]
+    pub checkstyle: bool,
+    #[serde(default)]
+    pub unit_tests: bool,
+    #[serde(default)]
+    pub ci: bool,
+}
+
+impl ConfigQuality {
+    pub fn from_set(q: &crate::types::QualitySet) -> Self {
+        Self { checkstyle: q.checkstyle, unit_tests: q.unit_tests, ci: q.ci }
+    }
+
+    /// `--no-quality` semantics: quality engineering is all-or-nothing.
+    pub fn any_disabled(&self) -> bool {
+        !(self.checkstyle && self.unit_tests && self.ci)
+    }
+}
+
+/// bStats plugin id: an integer in TOML, but a string is accepted too.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum ConfigId {
+    Int(i64),
+    Str(String),
+}
+
+impl ConfigId {
+    pub fn as_string(&self) -> String {
+        match self {
+            ConfigId::Int(v) => v.to_string(),
+            ConfigId::Str(v) => v.clone(),
+        }
+    }
+}
+
+/// Read a `-c/--config` TOML file. Any read/parse problem is `EX_CONFIG` (78)
+/// with the TOML line/column and the expected keys (spec §11.1).
+pub fn load_config(path: &std::path::Path) -> Result<ConfigFile> {
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        error::config(format!("无法读取配置文件 {}: {e}", path.display()))
+            .with_hint("检查路径与权限；键名与 ProjectSpec 的 snake_case 字段一致")
+    })?;
+    toml::from_str::<ConfigFile>(&text).map_err(|e| {
+        error::config(format!("-c 配置文件语法错（{}）: {e}", path.display())).with_hint(
+            "期望键: project_name / package_name / mc_version / platforms / metadata / language / \
+             ui_language / license / author / description / features.* / quality.* / example / \
+             permissions / website / git / download_jdk / bstats_id / target_dir",
+        )
+    })
+}
+
+/// Apply a config file under the CLI flags: only fields the CLI left unset are
+/// filled (spec §3.2: explicit flag > `-c` > wizard/defaults).
+pub fn apply_config(args: &mut InitArgs, cfg: &ConfigFile) -> Result<()> {
+    if args.name.is_none() {
+        args.name = cfg.project_name.clone();
+    }
+    if args.package.is_none() {
+        args.package = cfg.package_name.clone();
+    }
+    if args.mc.is_none() {
+        args.mc = cfg.mc_version.clone();
+    }
+    if args.platforms.is_empty() {
+        if let Some(platforms) = &cfg.platforms {
+            args.platforms = platforms.clone();
+        }
+    }
+    if args.output.is_none() {
+        args.output = cfg.target_dir.clone();
+    }
+    if args.metadata.is_none() {
+        args.metadata = cfg.metadata.as_deref().map(canonical_metadata);
+    }
+    if args.language.is_none() {
+        args.language = cfg.language.as_deref().map(|v| v.to_ascii_lowercase());
+    }
+    if args.ui_language.is_none() {
+        args.ui_language = cfg.ui_language.as_deref().map(|v| v.to_ascii_lowercase());
+    }
+    if args.license.is_none() {
+        args.license = cfg.license.clone();
+    }
+    if args.author.is_empty() {
+        if let Some(author) = &cfg.author {
+            args.author = author.clone();
+        }
+    }
+    if args.description.is_none() {
+        args.description = cfg.description.clone();
+    }
+    if args.website.is_none() {
+        args.website = cfg.website.clone();
+    }
+    if args.features.is_empty() {
+        if let Some(features) = &cfg.features {
+            args.features = features.enabled();
+        }
+    }
+    if !args.no_quality {
+        if let Some(quality) = &cfg.quality {
+            if quality.any_disabled() {
+                args.no_quality = true;
+            }
+        }
+    }
+    if !args.no_example && cfg.example == Some(false) {
+        args.no_example = true;
+    }
+    if !args.no_permissions && cfg.permissions == Some(false) {
+        args.no_permissions = true;
+    }
+    if !args.no_git && cfg.git == Some(false) {
+        args.no_git = true;
+        args.git = false;
+    }
+    if args.download_jdk.is_none() {
+        args.download_jdk = cfg.download_jdk;
+    }
+    if args.bstats_id.is_none() {
+        args.bstats_id = cfg.bstats_id.as_ref().map(ConfigId::as_string);
+    }
+    // Validate the merged result exactly like the pure-CLI path does.
+    validate_platforms(&args.platforms)?;
+    validate_features(&args.features)?;
+    if let Some(m) = &args.metadata {
+        if !METADATA_FORMATS.contains(&m.as_str()) {
+            return Err(error::usage(format!("未知 metadata 取值 `{m}`")));
+        }
+    }
+    Ok(())
+}
+
+/// Export the resolved answers as TOML for `--print-config` (spec §3.1). The
+/// output re-reads through [`load_config`] into an equivalent `ProjectSpec`.
+pub fn print_config_toml(spec: &crate::types::ProjectSpec) -> Result<String> {
+    let cfg = ConfigFile {
+        target_dir: Some(spec.target_dir.to_string_lossy().to_string()),
+        project_name: Some(spec.project_name.clone()),
+        plugin_name: Some(spec.plugin_name.clone()),
+        package_name: Some(spec.package_name.clone()),
+        author: if spec.author.is_empty() { None } else { Some(spec.author.clone()) },
+        description: spec.description.clone(),
+        mc_version: Some(spec.mc_version.clone()),
+        platforms: Some(spec.platforms.clone()),
+        metadata: Some(match spec.metadata {
+            crate::types::MetadataFormat::PluginYml => "plugin.yml".to_string(),
+            crate::types::MetadataFormat::PaperPluginYml => "paper-plugin.yml".to_string(),
+        }),
+        language: Some(
+            match spec.language {
+                crate::types::ArtifactLanguage::Zh => "zh",
+                crate::types::ArtifactLanguage::En => "en",
+                crate::types::ArtifactLanguage::Both => "both",
+            }
+            .to_string(),
+        ),
+        ui_language: Some(
+            match spec.ui_language {
+                crate::types::UiLanguage::Zh => "zh",
+                crate::types::UiLanguage::En => "en",
+            }
+            .to_string(),
+        ),
+        license: Some(spec.license.clone()),
+        features: Some(ConfigFeatures::from_set(&spec.features)),
+        quality: Some(ConfigQuality::from_set(&spec.quality)),
+        example: Some(spec.example),
+        permissions: Some(spec.permissions),
+        website: spec.website.clone(),
+        git: Some(spec.git),
+        download_jdk: Some(spec.download_jdk),
+        bstats_id: spec.bstats_id.as_ref().map(|id| ConfigId::Str(id.clone())),
+    };
+    toml::to_string_pretty(&cfg)
+        .map_err(|e| error::config(format!("无法导出 TOML: {e}")).with_hint("这是内部错误，请连同输入一起反馈"))
+}
+
+/// `plugin.yml` / `paper-plugin` / `paper-plugin.yml` → canonical value.
+fn canonical_metadata(raw: &str) -> String {
+    if raw.starts_with("paper") {
+        "paper-plugin.yml".to_string()
+    } else {
+        "plugin.yml".to_string()
+    }
+}
+
+fn validate_platforms(platforms: &[String]) -> Result<()> {
+    for p in platforms {
+        if !PLATFORMS.contains(&p.as_str()) {
+            return Err(error::usage(format!(
+                "未知平台 `{p}`；可用平台: {}",
+                PLATFORMS.join(", ")
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_features(features: &[String]) -> Result<()> {
+    for f in features {
+        if !FEATURE_NAMES.contains(&f.as_str()) {
+            return Err(error::usage(format!(
+                "未知 features 取值 `{f}`；可用值: {}",
+                FEATURE_NAMES.join(", ")
+            )));
+        }
+    }
+    Ok(())
 }
 
 pub fn dispatch(command: Command) -> Result<ExitCode> {
@@ -897,5 +1196,224 @@ mod tests {
         assert_eq!(source, refresh_cache::MatrixSource::Cache);
         assert!(warning.is_none());
         assert_eq!(cache.changed(), vec!["paper: 上游新增 26.3"]);
+    }
+
+    // ── `-c/--config` + `--print-config` (spec §3.2) ────────────────────────
+
+    const SAMPLE_CONFIG: &str = r#"
+project_name = "from-config"
+package_name = "com.example.fromconfig"
+mc_version = "1.21.11"
+platforms = ["bukkit"]
+metadata = "paper-plugin-yml"
+language = "both"
+ui_language = "en"
+license = "Apache-2.0"
+author = ["A", "B"]
+description = "from config"
+website = "https://example.com"
+git = false
+download_jdk = true
+bstats_id = 12345
+target_dir = "out-dir"
+
+[features]
+sqlite = true
+bstats = true
+update_check = true
+placeholderapi = false
+gui = false
+spotbugs = false
+coverage = false
+release_ci = false
+
+[quality]
+checkstyle = true
+unit_tests = true
+ci = true
+"#;
+
+    fn write_config(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+        let path = dir.join("vinoa.toml");
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn config_fills_every_unset_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = load_config(&write_config(tmp.path(), SAMPLE_CONFIG)).unwrap();
+        let mut args = InitArgs::default();
+        apply_config(&mut args, &cfg).unwrap();
+
+        assert_eq!(args.name.as_deref(), Some("from-config"));
+        assert_eq!(args.package.as_deref(), Some("com.example.fromconfig"));
+        assert_eq!(args.mc.as_deref(), Some("1.21.11"));
+        assert_eq!(args.platforms, vec!["bukkit"]);
+        assert_eq!(args.output.as_deref(), Some("out-dir"));
+        assert_eq!(args.metadata.as_deref(), Some("paper-plugin.yml"));
+        assert_eq!(args.language.as_deref(), Some("both"));
+        assert_eq!(args.ui_language.as_deref(), Some("en"));
+        assert_eq!(args.author, vec!["A", "B"]);
+        assert_eq!(args.description.as_deref(), Some("from config"));
+        assert_eq!(args.website.as_deref(), Some("https://example.com"));
+        assert!(args.no_git && !args.git);
+        assert_eq!(args.download_jdk, Some(true));
+        assert_eq!(args.bstats_id.as_deref(), Some("12345"));
+        assert_eq!(args.features, vec!["sqlite", "bstats", "update-check"]);
+        assert!(!args.no_quality);
+    }
+
+    #[test]
+    fn explicit_cli_flags_beat_the_config_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = load_config(&write_config(tmp.path(), SAMPLE_CONFIG)).unwrap();
+        let mut args = InitArgs {
+            name: Some("cli-name".into()),
+            mc: Some("26.2".into()),
+            platforms: vec!["paper".into()],
+            features: vec!["gui".into()],
+            no_quality: true,
+            no_git: true,
+            git: false,
+            output: Some("cli-out".into()),
+            ..InitArgs::default()
+        };
+        apply_config(&mut args, &cfg).unwrap();
+        assert_eq!(args.name.as_deref(), Some("cli-name"));
+        assert_eq!(args.mc.as_deref(), Some("26.2"));
+        assert_eq!(args.platforms, vec!["paper"]);
+        assert_eq!(args.features, vec!["gui"]);
+        assert_eq!(args.output.as_deref(), Some("cli-out"));
+        // Fields the CLI left unset still come from the config.
+        assert_eq!(args.package.as_deref(), Some("com.example.fromconfig"));
+        assert!(args.no_quality && args.no_git);
+    }
+
+    #[test]
+    fn quality_table_disabled_flags_map_to_no_quality() {
+        let cfg: ConfigFile = toml::from_str(
+            "project_name = \"p\"\n[quality]\ncheckstyle = false\nunit_tests = true\nci = true\n",
+        )
+        .unwrap();
+        assert!(cfg.quality.as_ref().unwrap().any_disabled());
+        let mut args = InitArgs::default();
+        apply_config(&mut args, &cfg).unwrap();
+        assert!(args.no_quality);
+    }
+
+    #[test]
+    fn config_syntax_error_is_exit_78_with_position_and_expected_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err =
+            load_config(&write_config(tmp.path(), "project_name = \"unterminated\n")).unwrap_err();
+        assert_eq!(err.code, "config.invalid");
+        assert_eq!(err.exit_code(), EXIT_CONFIG);
+        assert_eq!(err.exit_code(), 78);
+        assert!(err.message.contains("配置文件语法错"), "{}", err.message);
+        assert!(err.hint.unwrap().contains("期望键"));
+    }
+
+    #[test]
+    fn config_unknown_key_is_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = load_config(&write_config(tmp.path(), "project_nam = \"typo\"\n")).unwrap_err();
+        assert_eq!(err.exit_code(), EXIT_CONFIG);
+        assert!(err.message.contains("project_nam"), "{}", err.message);
+    }
+
+    #[test]
+    fn config_missing_file_is_exit_78() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = load_config(&tmp.path().join("nope.toml")).unwrap_err();
+        assert_eq!(err.exit_code(), EXIT_CONFIG);
+    }
+
+    #[test]
+    fn config_platform_and_feature_values_are_validated() {
+        let cfg: ConfigFile = toml::from_str("platforms = [\"nukkit\"]\n").unwrap();
+        let mut args = InitArgs::default();
+        assert_eq!(apply_config(&mut args, &cfg).unwrap_err().exit_code(), crate::error::EXIT_USAGE);
+
+        let empty: ConfigFile = toml::from_str("features = []\n").unwrap();
+        let mut args = InitArgs::default();
+        apply_config(&mut args, &empty).unwrap();
+        assert!(args.features.is_empty());
+    }
+
+    /// `--print-config > cfg.toml && vinoa init -c cfg.toml` must be equivalent.
+    #[test]
+    fn print_config_round_trips_through_load_config() {
+        let matrix = crate::matrix::Matrix::builtin().unwrap();
+        let first_args = InitArgs {
+            name: Some("my-plugin".into()),
+            package: Some("com.example.myplugin".into()),
+            mc: Some("1.21.11".into()),
+            platforms: vec!["paper".into()],
+            features: vec!["sqlite".into(), "bstats".into(), "spotbugs".into()],
+            metadata: Some("paper-plugin".into()),
+            language: Some("both".into()),
+            ui_language: Some("en".into()),
+            author: vec!["A".into()],
+            description: Some("demo".into()),
+            website: Some("https://example.com".into()),
+            bstats_id: Some("12345".into()),
+            download_jdk: Some(true),
+            no_git: true,
+            git: false,
+            no_quality: true,
+            ..InitArgs::default()
+        };
+        let spec1 = crate::init::spec_from_args(&first_args, &matrix).unwrap();
+        let toml_text = print_config_toml(&spec1).unwrap();
+
+        // Round trip: exported TOML re-reads into an equivalent spec.
+        let cfg: ConfigFile = toml::from_str(&toml_text).unwrap();
+        let mut second_args = InitArgs::default();
+        apply_config(&mut second_args, &cfg).unwrap();
+        let spec2 = crate::init::spec_from_args(&second_args, &matrix).unwrap();
+
+        assert_eq!(spec2.project_name, spec1.project_name);
+        assert_eq!(spec2.plugin_name, spec1.plugin_name);
+        assert_eq!(spec2.package_name, spec1.package_name);
+        assert_eq!(spec2.target_dir, spec1.target_dir);
+        assert_eq!(spec2.mc_version, spec1.mc_version);
+        assert_eq!(spec2.platforms, spec1.platforms);
+        assert_eq!(spec2.metadata, spec1.metadata);
+        assert_eq!(spec2.language, spec1.language);
+        assert_eq!(spec2.ui_language, spec1.ui_language);
+        assert_eq!(spec2.license, spec1.license);
+        assert_eq!(spec2.author, spec1.author);
+        assert_eq!(spec2.description, spec1.description);
+        assert_eq!(spec2.website, spec1.website);
+        assert_eq!(spec2.features, spec1.features);
+        assert_eq!(spec2.quality, spec1.quality);
+        assert_eq!(spec2.example, spec1.example);
+        assert_eq!(spec2.permissions, spec1.permissions);
+        assert_eq!(spec2.git, spec1.git);
+        assert_eq!(spec2.download_jdk, spec1.download_jdk);
+        assert_eq!(spec2.bstats_id, spec1.bstats_id);
+    }
+
+    #[test]
+    fn print_config_emits_the_documented_keys() {
+        let matrix = crate::matrix::Matrix::builtin().unwrap();
+        let args = InitArgs {
+            name: Some("p".into()),
+            mc: Some("1.21.11".into()),
+            platforms: vec!["bukkit".into()],
+            ..InitArgs::default()
+        };
+        let spec = crate::init::spec_from_args(&args, &matrix).unwrap();
+        let text = print_config_toml(&spec).unwrap();
+        for key in [
+            "project_name", "plugin_name", "package_name", "mc_version", "platforms",
+            "metadata", "language", "ui_language", "license", "example", "permissions",
+            "git", "download_jdk", "[features]", "[quality]",
+        ] {
+            assert!(text.contains(key), "missing key {key} in:\n{text}");
+        }
+        assert!(text.contains("metadata = \"plugin.yml\""));
+        assert!(text.contains("language = \"zh\""));
     }
 }
