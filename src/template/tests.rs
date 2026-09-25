@@ -413,6 +413,33 @@ path = "a.txt"
 }
 
 #[test]
+fn github_actions_expressions_render_literally() {
+    // `${{ }}` is GitHub Actions, not jinja: it must survive rendering and must
+    // not be counted as a consumed variable (A1/A4).
+    let manifest = r#"
+schema = 1
+id = "t"
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+vars = []
+[[entries]]
+path = "ci.yml"
+"#;
+    let dir = write_tree(&[(
+        "ci.yml",
+        "run: ${{ matrix.os }}\njava: ${{ steps.setup.outputs.version }}\n",
+    )]);
+    let m = load_from_str_with_source(manifest, SourceRef::Dir(dir.path().to_path_buf())).unwrap();
+    let spec = spec(&[]);
+    let resolved = resolved_for(&spec);
+    let plan = build_plan(&m, &spec, &resolved).unwrap();
+    let body = String::from_utf8_lossy(&plan.files[0].content);
+    assert!(body.contains("${{ matrix.os }}"), "{body}");
+    assert!(body.contains("${{ steps.setup.outputs.version }}"), "{body}");
+    assert!(plan.files[0].content.ends_with(b"\n"));
+}
+
+#[test]
 fn a2_rejects_stale_template_defaults() {
     let manifest = r#"
 schema = 1
@@ -638,6 +665,61 @@ fn manifest_rejects_too_new_schema_and_cli_floor() {
 }
 
 #[test]
+fn conditions_table_resolves_and_chains() {
+    let manifest = r#"
+schema = 1
+id = "t"
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+vars = []
+[conditions]
+cap_has_authors = "has_authors"
+cap_chain = "cap_has_authors"
+[[entries]]
+path = "a.txt"
+when = "cap_chain"
+"#;
+    let dir = write_tree(&[("a.txt", "static\n")]);
+    let m = load_from_str_with_source(manifest, SourceRef::Dir(dir.path().to_path_buf())).unwrap();
+
+    let with_author = spec(&[]);
+    let resolved = resolved_for(&with_author);
+    let plan = build_plan(&m, &with_author, &resolved).unwrap();
+    assert_eq!(plan.files.len(), 1);
+
+    let mut no_author = spec(&[]);
+    no_author.author.clear();
+    let resolved = resolved_for(&no_author);
+    let plan = build_plan(&m, &no_author, &resolved).unwrap();
+    assert!(plan.files.is_empty());
+    assert_eq!(plan.skipped.len(), 1);
+}
+
+#[test]
+fn duplicate_targets_are_rejected() {
+    let manifest = r#"
+schema = 1
+id = "t"
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+vars = []
+[[entries]]
+template = "x.txt"
+path = "a.txt"
+[[entries]]
+template = "y.txt"
+path = "a.txt"
+"#;
+    let dir = write_tree(&[("x.txt", "x\n"), ("y.txt", "y\n")]);
+    let m = load_from_str_with_source(manifest, SourceRef::Dir(dir.path().to_path_buf())).unwrap();
+    let spec = spec(&[]);
+    let resolved = resolved_for(&spec);
+    let err = build_plan(&m, &spec, &resolved).unwrap_err();
+    assert_eq!(err.code, "template.bad_target", "{}", err.message);
+    assert!(err.message.contains("重复"));
+}
+
+#[test]
 fn path_variables_are_restricted() {
     let toml = r#"
 schema = 1
@@ -730,6 +812,11 @@ fn builtin_plan_end_to_end_when_templates_are_complete() {
     match build_plan(&m, &spec, &resolved) {
         Ok(plan) => {
             assert!(plan.files.len() >= 20, "only {} files", plan.files.len());
+            // `.gitignore`/`.gitattributes` are part of the project, not of the
+            // `git init` action: they must exist even with `--no-git`.
+            assert!(plan.files.iter().any(|f| f.path == ".gitignore"));
+            assert!(plan.files.iter().any(|f| f.path == ".gitattributes"));
+            assert!(plan.actions.is_empty(), "--no-git must not queue GitInit");
             let again = build_plan(&m, &spec, &resolved).unwrap();
             let a: Vec<String> = plan.metas().iter().map(|m| m.sha256.clone()).collect();
             let b: Vec<String> = again.metas().iter().map(|m| m.sha256.clone()).collect();

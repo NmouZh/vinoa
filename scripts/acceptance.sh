@@ -41,7 +41,7 @@ echo "== 2) 真实生成 =="
 test -d "$NAME" || { echo "FAIL: 目标目录不存在"; exit 1; }
 echo "  生成文件数: $(find "$NAME" -type f | wc -l)"
 echo "  渲染残留自查（应无输出）:"
-grep -rIn --exclude-dir=.git -e 'com\.example' -e '{{' -e '}}' "$NAME" | head -10 || true
+grep -rIn --exclude-dir=.git -e '{{' -e '}}' -e 'YOUR_PACKAGE' -e 'exampleplugin' -e 'PluginName' "$NAME" | head -10 || true
 echo
 
 echo "== 3) ./gradlew build（这是验收的核心判据） =="

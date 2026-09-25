@@ -556,7 +556,9 @@ fn check_a1(
         // Emptiness is judged on the real output, before `{% raw %}` chunks
         // (which may legitimately be the whole file) are stripped for the scan.
         let rendered_empty = content.trim().is_empty();
-        let mut scan = content.clone();
+        // GitHub Actions `${{ ... }}` is legitimate output, not a leftover
+        // placeholder (spec §7.2 raw rules keep working on top of this).
+        let mut scan = render::strip_github_expressions(&content);
         if let Some(chunks) = raw_exempt.get(&f.path) {
             for c in chunks {
                 if !c.is_empty() {

@@ -59,15 +59,14 @@ mode = "755"
 path = "gradlew.bat"
 render = "copy"
 
+# 工程本身的一部分：只有 `git init + 首次提交`（PlannedAction::GitInit）跟 cap_git 走。
 [[entries]]
 path = ".gitignore"
 render = "copy"
-when = "cap_git"
 
 [[entries]]
 path = ".gitattributes"
 render = "copy"
-when = "cap_git"
 
 [[entries]]
 path = "README.md"

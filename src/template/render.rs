@@ -663,11 +663,66 @@ impl Renderer {
     }
 
     /// Render `src` (named `name` for error messages) with `ctx`.
+    ///
+    /// `${{ ... }}` is GitHub Actions syntax and is escaped to a literal before
+    /// parsing, so CI workflow templates need no `{% raw %}` ceremony.
     pub fn render(&self, name: &str, src: &str, ctx: &Ctx) -> Result<String> {
+        let escaped = escape_github_expressions(src);
         self.env
-            .render_named_str(name, src, Value::Object(ctx.clone()))
+            .render_named_str(name, &escaped, Value::Object(ctx.clone()))
             .map_err(|e| map_render_error(name, e))
     }
+}
+
+/// Escape the opener of `${{ ... }}` (GitHub Actions expressions) so jinja never
+/// parses them. Occurrences already inside a `{% raw %}` block are left alone
+/// (raw blocks do not nest).
+pub fn escape_github_expressions(src: &str) -> String {
+    let mut out = String::new();
+    let mut rest = src;
+    loop {
+        match rest.find("{% raw %}") {
+            Some(i) => {
+                out.push_str(&rest[..i].replace("${{", "{% raw %}${{{% endraw %}"));
+                let after = &rest[i..];
+                match after.find("{% endraw %}") {
+                    Some(j) => {
+                        let end = j + "{% endraw %}".len();
+                        out.push_str(&after[..end]);
+                        rest = &after[end..];
+                    }
+                    None => {
+                        out.push_str(after);
+                        return out;
+                    }
+                }
+            }
+            None => {
+                out.push_str(&rest.replace("${{", "{% raw %}${{{% endraw %}"));
+                return out;
+            }
+        }
+    }
+}
+
+/// Remove `${{ ... }}` spans from rendered text (A1: Actions syntax is never a
+/// leftover template placeholder).
+pub fn strip_github_expressions(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("${{") {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 3..];
+        match after.find("}}") {
+            Some(j) => rest = &after[j + 2..],
+            None => {
+                out.push_str(&rest[i..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn map_render_error(name: &str, e: minijinja::Error) -> Error {
@@ -712,6 +767,7 @@ pub struct Extracted {
 /// Approximation rules (documented, deterministic):
 ///  * only inside `{{ ... }}` / `{% ... %}`;
 ///  * `{% raw %}` blocks are skipped entirely;
+///  * GitHub Actions `${{ ... }}` is not jinja and is skipped;
 ///  * `{% for X in ... %}` and `{% set X = ... %}` introduce locals;
 ///  * dotted chains count only their root (`mainClass.paper` -> `mainClass`);
 ///  * `map[expr]` counts the root and, when the key is an identifier, that
@@ -720,7 +776,7 @@ pub struct Extracted {
 pub fn extract_vars(src: &str, extra_locals: &[String]) -> Extracted {
     let mut out = Extracted::default();
     let mut locals: BTreeSet<String> = extra_locals.iter().cloned().collect();
-    let body = strip_raw_blocks(src);
+    let body = strip_raw_blocks(&strip_github_expressions(src));
     for chunk in jinja_chunks(&body) {
         let toks = ident_stream(&chunk);
         // First pass: collect `for`/`set` locals so their uses are ignored.

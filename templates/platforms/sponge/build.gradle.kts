@@ -32,6 +32,14 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
 {% endif %}
+// SpongeAPI is published as -SNAPSHOT for most release lines, so this module needs
+// Sponge's own repository in addition to the shared ones declared in the root build script.
+repositories {
+    maven("https://repo.spongepowered.org/repository/maven-public/") {
+        name = "spongepowered"
+    }
+}
+
 dependencies {
     implementation(project(":core"))
     compileOnly(libs.sponge.api)
