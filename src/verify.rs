@@ -120,6 +120,23 @@ pub fn run(plan: &Plan, online: bool) -> Result<VerifyOutcome> {
     run_with(plan, &VerifyOptions { online, ..VerifyOptions::default() })
 }
 
+/// `<target>/.vinoa/verify/verify-<UTC>.log` — always written, pass or fail.
+///
+/// Returns `(on_disk, reported)`. The two are built from the same file name so
+/// they cannot drift apart, but they are *not* the same string:
+///
+/// - `on_disk` uses the platform separator (`\` on Windows) so the path resolves.
+/// - `reported` is always forward-slashed, because spec §11.5 freezes
+///   `verify.log_path` as `.vinoa/verify/verify-<UTC>.log` — the same convention
+///   every other path in that document uses (`files[].path`, `planned[].target`).
+///   `PathBuf::to_string_lossy` would emit backslashes on Windows.
+fn verify_log_paths() -> (PathBuf, String) {
+    let file = format!("verify-{}.log", crate::report::utc_stamp_compact());
+    let on_disk = PathBuf::from(".vinoa").join("verify").join(&file);
+    let reported = format!(".vinoa/verify/{file}");
+    (on_disk, reported)
+}
+
 /// Run the build with explicit options.
 pub fn run_with(plan: &Plan, options: &VerifyOptions) -> Result<VerifyOutcome> {
     let options = options.clone().resolved();
@@ -127,10 +144,7 @@ pub fn run_with(plan: &Plan, options: &VerifyOptions) -> Result<VerifyOutcome> {
     let command = build_command(options.online);
     let display = command.command_line();
 
-    // `<target>/.vinoa/verify/verify-<UTC>.log` — always written, pass or fail.
-    let rel_log = PathBuf::from(".vinoa")
-        .join("verify")
-        .join(format!("verify-{}.log", crate::report::utc_stamp_compact()));
+    let (rel_log, log_path_reported) = verify_log_paths();
     let log_abs = root.join(&rel_log);
     if let Some(dir) = log_abs.parent() {
         std::fs::create_dir_all(dir).map_err(|e| {
@@ -158,7 +172,7 @@ pub fn run_with(plan: &Plan, options: &VerifyOptions) -> Result<VerifyOutcome> {
         let _ = log.flush();
         return Ok(VerifyOutcome {
             ok: false,
-            log_path: rel_log.to_string_lossy().to_string(),
+            log_path: log_path_reported.clone(),
             reason: Some("build_failed".into()),
             exit_code: None,
             command: display,
@@ -207,7 +221,7 @@ pub fn run_with(plan: &Plan, options: &VerifyOptions) -> Result<VerifyOutcome> {
 
     Ok(VerifyOutcome {
         ok,
-        log_path: rel_log.to_string_lossy().to_string(),
+        log_path: log_path_reported.clone(),
         reason,
         exit_code,
         command: display,
@@ -372,6 +386,30 @@ mod tests {
     use super::*;
     use crate::types::{Plan, PlannedAction};
 
+    /// The reported `verify.log_path` must be forward-slashed on every platform
+    /// (spec §11.5). `PathBuf::join` uses the *platform* separator, so on Windows
+    /// the raw `PathBuf` renders with backslashes — this asserts the normalisation
+    /// that keeps the JSON/human contract identical across platforms, without
+    /// needing a Windows host to observe it.
+    #[test]
+    fn log_path_is_forward_slashed_on_every_platform() {
+        let (on_disk, shown) = verify_log_paths();
+        assert!(
+            !shown.contains('\\'),
+            "reported log_path must never contain a backslash, got {shown:?}"
+        );
+        assert!(
+            shown.starts_with(".vinoa/verify/verify-"),
+            "reported log_path must match the frozen spec shape, got {shown:?}"
+        );
+        assert!(shown.ends_with(".log"), "got {shown:?}");
+        // Both forms must describe the same file, and the on-disk form must be
+        // resolvable by joining it onto the project root.
+        let file = shown.rsplit('/').next().unwrap();
+        assert_eq!(on_disk.file_name().unwrap().to_string_lossy(), file);
+        assert!(on_disk.ends_with(Path::new(".vinoa").join("verify").join(file)));
+    }
+
     fn plan_at(root: PathBuf) -> Plan {
         Plan {
             root,
@@ -389,7 +427,16 @@ mod tests {
         assert!(offline.args.contains(&"--no-daemon".to_string()));
         assert!(offline.args.contains(&"--console=plain".to_string()));
         assert!(offline.args.contains(&"--stacktrace".to_string()));
-        assert_eq!(offline.args[0], "build");
+        // The Gradle arguments do not start at index 0 on Windows: the command is
+        // `cmd /C gradlew.bat build …`, so the wrapper occupies the first two slots.
+        let gradle_args: &[String] = if cfg!(windows) {
+            assert_eq!(offline.args[0], "/C");
+            assert_eq!(offline.args[1], "gradlew.bat");
+            &offline.args[2..]
+        } else {
+            &offline.args
+        };
+        assert_eq!(gradle_args[0], "build");
         assert!(offline.display.contains("--offline"));
 
         let online = build_command(true);
@@ -490,6 +537,13 @@ mod tests {
         assert!(!outcome.ok);
         assert_eq!(outcome.reason.as_deref(), Some("build_failed"));
         assert!(outcome.log_path.starts_with(".vinoa/verify/verify-"));
+        // Spec §11.5 freezes this field with forward slashes; on Windows a naive
+        // `PathBuf::to_string_lossy` would report `.vinoa\verify\verify-…`.
+        assert!(
+            !outcome.log_path.contains('\\'),
+            "verify.log_path must stay forward-slashed (spec §11.5), got {:?}",
+            outcome.log_path
+        );
         assert!(outcome.log_abs.is_file(), "log must always be written");
         assert!(outcome.tail[0].contains("缺少构建包装器"));
         assert!(!outcome.into_error(&root.clone()).is_none());
