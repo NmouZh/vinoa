@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<rect width="1920" height="1080" fill="#1e1e2e"/>
+<text x="150" y="400" font-family="Noto Sans CJK SC" font-size="128" font-weight="900" fill="#cdd6f4">写插件</text>
+<text x="150" y="560" font-family="Noto Sans CJK SC" font-size="128" font-weight="900" fill="#cdd6f4">开头那半小时</text>
+<text x="150" y="720" font-family="Noto Sans CJK SC" font-size="76" font-weight="700" fill="#a6adc8">现在只要</text>
+<text x="470" y="720" font-family="Noto Sans CJK SC" font-size="76" font-weight="900" fill="#74c7ec">十秒</text>
+<line x1="150" y1="820" x2="300" y2="820" stroke="#74c7ec" stroke-width="6"/>
+<text x="330" y="838" font-family="Noto Sans Mono" font-size="52" font-weight="700" fill="#cdd6f4">vinoa</text>
+<text x="150" y="920" font-family="Noto Sans CJK SC" font-size="40" fill="#6c7086">Minecraft 插件工程脚手架 · 61 个版本 · 7 个平台</text>
+<rect x="1080" y="250" width="700" height="520" rx="24" ry="24" fill="none" stroke="#585b70" stroke-width="3"/>
+<circle cx="1124" cy="294" r="9" fill="#585b70"/>
+<circle cx="1158" cy="294" r="9" fill="#585b70"/>
+<circle cx="1192" cy="294" r="9" fill="#585b70"/>
+<line x1="1080" y1="330" x2="1780" y2="330" stroke="#585b70" stroke-width="2"/>
+<text x="1124" y="390" font-family="Noto Sans Mono" font-size="30" font-weight="700" fill="#74c7ec">$</text>
+<text x="1166" y="390" font-family="Noto Sans Mono" font-size="30" fill="#cdd6f4">vinoa init my-plugin</text>
+<text x="1166" y="442" font-family="Noto Sans Mono" font-size="30" fill="#a6adc8">-m 1.21.11 --platform paper</text>
+<text x="1166" y="546" font-family="Noto Sans Mono" font-size="30" fill="#a6e3a1">✓ 完成: ./my-plugin</text>
+<text x="1124" y="598" font-family="Noto Sans Mono" font-size="30" font-weight="700" fill="#74c7ec">$</text>
+<text x="1166" y="598" font-family="Noto Sans Mono" font-size="30" fill="#cdd6f4">cd my-plugin</text>
+<text x="1166" y="650" font-family="Noto Sans Mono" font-size="30" fill="#a6adc8">./gradlew build</text>
+<text x="1166" y="754" font-family="Noto Sans Mono" font-size="30" fill="#a6e3a1">BUILD SUCCESSFUL in 8s</text>
+</svg>

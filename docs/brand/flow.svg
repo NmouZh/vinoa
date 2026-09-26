@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260">
+<rect width="1200" height="260" fill="#1e1e2e"/>
+<rect x="30" y="84" width="240" height="92" rx="12" fill="none" stroke="#585b70" stroke-width="2"/>
+<text x="150" y="122" text-anchor="middle" font-family="Noto Sans Mono" font-size="19" font-weight="600" fill="#74c7ec">vinoa init</text>
+<text x="150" y="150" text-anchor="middle" font-family="Noto Sans CJK SC" font-size="14" fill="#a6adc8">选 MC 版本 + 平台</text>
+<line x1="284" y1="130" x2="316" y2="130" stroke="#585b70" stroke-width="2"/>
+<polyline points="307,125 316,130 307,135" fill="none" stroke="#585b70" stroke-width="2"/>
+<rect x="330" y="84" width="240" height="92" rx="12" fill="none" stroke="#585b70" stroke-width="2"/>
+<text x="450" y="122" text-anchor="middle" font-family="Noto Sans Mono" font-size="19" font-weight="600" fill="#cdd6f4">版本矩阵</text>
+<text x="450" y="150" text-anchor="middle" font-family="Noto Sans CJK SC" font-size="14" fill="#a6adc8">坐标 / Java / Gradle</text>
+<line x1="584" y1="130" x2="616" y2="130" stroke="#585b70" stroke-width="2"/>
+<polyline points="607,125 616,130 607,135" fill="none" stroke="#585b70" stroke-width="2"/>
+<rect x="630" y="84" width="240" height="92" rx="12" fill="none" stroke="#585b70" stroke-width="2"/>
+<text x="750" y="122" text-anchor="middle" font-family="Noto Sans Mono" font-size="19" font-weight="600" fill="#cdd6f4">生成工程</text>
+<text x="750" y="150" text-anchor="middle" font-family="Noto Sans CJK SC" font-size="14" fill="#a6adc8">43 个文件落盘</text>
+<line x1="884" y1="130" x2="916" y2="130" stroke="#585b70" stroke-width="2"/>
+<polyline points="907,125 916,130 907,135" fill="none" stroke="#585b70" stroke-width="2"/>
+<rect x="930" y="84" width="240" height="92" rx="12" fill="none" stroke="#585b70" stroke-width="2"/>
+<text x="1050" y="122" text-anchor="middle" font-family="Noto Sans Mono" font-size="19" font-weight="600" fill="#a6e3a1">./gradlew build</text>
+<text x="1050" y="150" text-anchor="middle" font-family="Noto Sans CJK SC" font-size="14" fill="#a6adc8">BUILD SUCCESSFUL</text>
+</svg>
