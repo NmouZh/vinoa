@@ -9,11 +9,12 @@
 ## §0 录制前准备（不录）
 
 ```bash
-# 1. 确认二进制
+# 1. 确认二进制（本仓库构建，或已安装的 vinoa）
 ./target/release/vinoa --version        # 期望 vinoa 0.1.0
 
 # 2. 预热的 Gradle 缓存（关键，否则现场 build 要等 3 分钟）
-cd /root/vinoa/.tmp-demo && ./gradlew build && cd -
+#    先随便生成一个工程并构建一次，把依赖下下来：
+cd ~/demo && vinoa init warmup -m 1.21.11 --platform paper -y && cd warmup && ./gradlew build
 
 # 3. 清掉演示目录
 rm -rf ~/demo && mkdir -p ~/demo

@@ -83,6 +83,6 @@ for prompt, text, color in lines:
 
 # --- 右下角留白：B 站时长角标会压在这里，不放内容 -----------------------
 
-out = Path("/root/vinoa/docs/brand/bilibili-cover.svg")
+out = Path(__file__).resolve().parent / "bilibili-cover.svg"
 out.write_text("\n".join(p) + "\n</svg>", encoding="utf-8")
 print(f"wrote {out}")

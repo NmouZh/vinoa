@@ -16,7 +16,7 @@ FAINT = "#6c7086"    # tokens.md faint
 ACCENT = "#74c7ec"   # tokens.md accent
 OK = "#a6e3a1"       # tokens.md ok
 
-OUT = Path("/root/vinoa/docs/brand")
+OUT = Path(__file__).resolve().parent
 
 CJK = "Noto Sans CJK SC"
 MONO = "Noto Sans Mono"

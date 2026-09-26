@@ -74,7 +74,7 @@ for i in range(6):
 
 parts.append("</svg>")
 
-out = Path("/root/vinoa/docs/brand/generated/vinoa-banner.svg")
+out = Path(__file__).resolve().parent / "banner.svg"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text("\n".join(parts), encoding="utf-8")
 print(f"wrote {out}")
