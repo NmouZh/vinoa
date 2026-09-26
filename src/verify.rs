@@ -41,7 +41,7 @@ impl Default for VerifyOptions {
 impl VerifyOptions {
     /// Apply the env override (only when set) and clamp both limits (spec §11.4).
     pub fn resolved(mut self) -> Self {
-        if let Some(raw) = std::env::var(TIMEOUT_ENV).ok() {
+        if let Ok(raw) = std::env::var(TIMEOUT_ENV) {
             self.timeout_s = resolve_timeout(Some(&raw));
         }
         self.timeout_s = self.timeout_s.clamp(1, MAX_TIMEOUT_S);

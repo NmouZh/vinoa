@@ -30,8 +30,11 @@ class {{ pluginName }}IntegrationTest {
             "{% if is_paper_metadata %}paper-plugin.yml{% else %}plugin.yml{% endif %}";
 
     private static String descriptor() throws IOException {
-        try (InputStream in =
-                {{ pluginName }}IntegrationTest.class.getClassLoader().getResourceAsStream(DESCRIPTOR)) {
+        // Keep the interpolated class name on its own line: the project name is
+        // user-supplied, so folding it into a longer expression would let the
+        // generated line overflow the checkstyle LineLength limit.
+        final ClassLoader loader = {{ pluginName }}IntegrationTest.class.getClassLoader();
+        try (InputStream in = loader.getResourceAsStream(DESCRIPTOR)) {
             assertNotNull(in, DESCRIPTOR + " must be packaged on the classpath");
             final Scanner scanner = new Scanner(in, StandardCharsets.UTF_8.name());
             scanner.useDelimiter("\\A");
@@ -43,7 +46,9 @@ class {{ pluginName }}IntegrationTest {
     void descriptorNamesThisPluginAndItsEntryClass() throws IOException {
         final String text = descriptor();
         assertTrue(text.contains("name: {{ pluginName }}"), "descriptor must name the plugin");
-        assertTrue(text.contains("main: {{ mainClass }}"), "descriptor must point at the entry class");
+        assertTrue(
+                text.contains("main: {{ mainClass }}"),
+                "descriptor must point at the entry class");
     }
 
     @Test

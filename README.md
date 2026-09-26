@@ -1,6 +1,8 @@
 # vinoa
 
-创建 Minecraft 服务端插件工程的 CLI：**生成一个真能 `./gradlew build` 通过的工程**，而不是一堆模板文件。
+跑完一条 `vinoa init`，拿到手的工程 `./gradlew build` 直接绿。vinoa 干的就是这件事。
+
+说白了，它给的是一份能直接构建的 Minecraft 服务端插件工程，不是一堆你还得自己改的模板文件。严格说，模板它也在用——区别是那些容易写错的坑，已经被矩阵提前填平了。
 
 ```bash
 vinoa init my-plugin -p com.example.myplugin -m 1.21.11 --platform paper
@@ -9,19 +11,23 @@ cd my-plugin && ./gradlew build
 
 ## 它解决什么
 
-现成的插件模板要么只支持一个平台，要么把版本号写死在脚本里。Minecraft 的版本世界是一张**稀疏表**：Paper 没有 1.8.9 的 API（最早 `1.9.4`），Folia 从 `1.19.4` 才有，Minestom 只支持四个版本，`paper-api` 的坐标在 1.17 与 26.1 各翻转一次，Java 地板从 8 一路走到 25。手写模板必然在某处写错，而**写错的表现是"用户拿到工程却构建不了"**。
+Paper 没有 1.8.9 的 API，最早只到 `1.9.4`。Folia 要等到 `1.19.4` 才出现。Minestom 一共四个版本。`paper-api` 的坐标在 1.17 和 26.1 各翻过一次面。Java 最低版本从 8 一路涨到 25。
 
-vinoa 把这些事实做成一份**内置版本矩阵**（每一条坐标都对着持有仓库实测过），用户只选 MC 版本与平台，其余由矩阵推出。
+这些差异，靠手写模板记，记不全。
+
+更麻烦的是，记错了不会当场报错。往往要等用户拿到工程，`./gradlew build` 失败，你才发现模板里那行版本号写歪了。
+
+vinoa 把这些事实全收进一份内置版本矩阵，每条坐标都对着上游仓库实测过。你只用选 MC 版本和平台，剩下的矩阵自己推。现成的插件模板，要么只认一个平台，要么把版本号写死在脚本里，毛病都差不多。
 
 ## 特性
 
-- **向导交互**，形态对齐 IDEA 的"新建项目"（工程 / 构建 / 目标服务端 / 附加四页，可回退）。
-- **非交互与 AI 友好**：全参数可用、`--dry-run` 预览、`--json` 单文档输出、非 TTY 自动降级、稳定错误码与退出码、`vinoa schema` 自描述。
-- **多模块工程**：`core/` 放平台无关抽象，`platforms/<平台>/` 各自实现；勾 `paper` 自动带上 `bukkit` 兼容模块。
-- **版本矩阵**：MC **1.8.9 → 26.2**，平台 paper / bukkit / velocity / bungeecord / folia / sponge / minestom。默认离线、可复现；`vinoa versions --refresh` 可选联网刷新。
-- **环境预检**：按目标推导 Java 版本并检查本机是否具备（>16 走 toolchain 需要本机 JDK；≤16 走 `options.release`，不需要）。
-- **质量工程**：checkstyle + 单元测试 + CI 默认生成；SpotBugs / 覆盖率 / 发布工作流可选。
-- **原子落盘**：先写临时目录再整体 rename，失败不留半个工程。
+- 向导长得像 IDEA 的"新建项目"，工程、构建、目标服务端、附加四页，能往回退。
+- 命令行这块对脚本和 AI 都友好。参数能全给，`--dry-run` 先看，`--json` 出单文档，非 TTY 自动降级，错误码和退出码是稳的，`vinoa schema` 自己描述自己。
+- 多模块工程，`core/` 放平台无关的抽象，`platforms/<平台>/` 各自实现。勾上 `paper`，`bukkit` 兼容模块自动跟上。
+- MC 1.8.9 到 26.2 都能出，平台七个：paper / bukkit / velocity / bungeecord / folia / sponge / minestom。默认离线、可复现；想要新数据，`vinoa versions --refresh` 联网拉。
+- 生成前会跑一次环境预检，按目标反推需要的 Java 版本，再看本机有没有。16 以上走 toolchain，本机得装 JDK——16 及以下走 `options.release`，不用装。
+- checkstyle、单元测试、build CI 默认就带；SpotBugs、覆盖率、发布工作流可选。
+- 落盘是原子的，先写临时目录，最后整体 rename 过去，中途失败不留半个工程。
 
 ## 安装 / 构建
 
@@ -59,7 +65,7 @@ my-plugin/
 └─ README.md · LICENSE(Apache-2.0) · CHANGELOG.md
 ```
 
-平台差异由矩阵驱动：`plugin.yml` 与 `paper-plugin.yml` 的命令声明方式互斥，模板不会同时生成；老版本目标用 `options.release`、现代目标用 Java toolchain。
+平台差异也交给矩阵。`plugin.yml` 和 `paper-plugin.yml` 声明命令的方式互斥，模板不会两个都生成。老版本目标走 `options.release`，新的走 Java toolchain。
 
 ## 验收
 
@@ -68,15 +74,15 @@ bash scripts/acceptance.sh 1.21.11 paper    # 单行：生成 → 自查残留 �
 bash scripts/acceptance-all.sh              # A2/A3/A6/A7 + B 级
 ```
 
-保证矩阵（`docs/spec/vinoa-cli.md` §12）：`1.8.9 bukkit` / `1.12.2` / `1.16.5` / `1.21.11` / `26.2` paper + 两个代理端——这些组合在 CI 上真跑 `./gradlew build`；`folia`/`sponge`/`minestom` 与其它变体为 best-effort。
+下面这些组合属于 [`docs/spec/vinoa-cli.md`](docs/spec/vinoa-cli.md) §12 的保证矩阵，CI 上真跑 `./gradlew build`——`1.8.9 bukkit`、`1.12.2`、`1.16.5`、`1.21.11`、`26.2` 的 paper，再加两个代理端。`folia`/`sponge`/`minestom` 和其它变体是 best-effort。
 
 ## 文档
 
-- 规格（唯一事实来源）：[`docs/spec/vinoa-cli.md`](docs/spec/vinoa-cli.md)
+- 规格，唯一事实来源：[`docs/spec/vinoa-cli.md`](docs/spec/vinoa-cli.md)
 - 决策草稿：[`docs/spec/drafts/`](docs/spec/drafts)
-- 事实研究（每条都有来源）：[`docs/research/`](docs/research)
-- 工作方式（issue tracker、wayfinder 操作）：[`AGENTS.md`](AGENTS.md)、[`docs/agents/`](docs/agents)
+- 事实研究，每条都有来源：[`docs/research/`](docs/research)
+- 工作方式，issue tracker 和 wayfinder 操作：[`AGENTS.md`](AGENTS.md)、[`docs/agents/`](docs/agents)
 
 ## 许可证
 
-Apache-2.0。参考了社区模板 `CrimsonWarpedcraft/plugin-template`（GPL-3.0，**仅参考结构与工程纪律，未复制代码**）与 `sVoxelDev/multi-platform-plugin-template`（MIT）。
+Apache-2.0。参考了社区模板 `CrimsonWarpedcraft/plugin-template`（GPL-3.0，只参考了结构和工程纪律，代码没复制）和 `sVoxelDev/multi-platform-plugin-template`（MIT）。

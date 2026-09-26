@@ -91,9 +91,7 @@ pub fn build_plan_with_vars(
     for (name, expr) in &manifest.conditions {
         state.consumed_switches.insert(name.clone());
         for id in render::expr_identifiers(expr) {
-            if manifest.conditions.contains_key(&id) {
-                state.consumed_switches.insert(id);
-            } else if manifest::is_switch_name(&id) {
+            if manifest.conditions.contains_key(&id) || manifest::is_switch_name(&id) {
                 state.consumed_switches.insert(id);
             } else {
                 state.consumed_raw.insert(render::camel(&id));
@@ -134,6 +132,21 @@ pub fn build_plan_with_vars(
         warnings.push(
             "folia + paper-plugin.yml：上游格式没有 `folia-supported` 字段，无法声明 Folia 支持，Folia 可能拒绝加载；需要该声明请改用 plugin.yml".to_string(),
         );
+    }
+
+    // `[[assertions]]` strings are part of the static footprint too.
+    for a in &manifest.assertions {
+        if let Some(expr) = &a.when {
+            collect_condition_consumption(manifest, expr, &mut state);
+        }
+        let mut blob = a.target.clone();
+        for c in &a.contains {
+            blob.push(' ');
+            blob.push_str(c);
+        }
+        let ex = render::extract_vars(&blob, &[]);
+        state.consumed_raw.extend(ex.raw);
+        state.consumed_switches.extend(ex.switches);
     }
 
     for entry in &manifest.entries {
@@ -954,6 +967,11 @@ fn check_manifest_assertions(
     renderer: &Renderer,
 ) -> Result<()> {
     for a in &manifest.assertions {
+        if let Some(expr) = &a.when {
+            if !render::eval_condition(expr, ctx)? {
+                continue;
+            }
+        }
         let target = renderer.render(&a.target, &a.target, ctx)?;
         let Some(f) = plan.files.iter().find(|f| f.path == target) else {
             return Err(config_error(

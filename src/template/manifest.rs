@@ -146,6 +146,11 @@ pub struct Assertion {
     /// Substrings that must appear in the rendered target. These strings are
     /// themselves rendered first (spec §7.8), so `{{pluginName}}` works.
     pub contains: Vec<String>,
+    /// Optional §7.5 condition: the assertion only applies when it holds. Needed
+    /// for targets that are themselves conditional (e.g. `release.yml` under
+    /// `cap_release_ci`).
+    #[serde(default)]
+    pub when: Option<String>,
 }
 
 fn config_error(code: &'static str, msg: impl Into<String>) -> Error {

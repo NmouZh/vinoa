@@ -97,6 +97,11 @@ junit = "6.1.3"                 # [LEG §3.3] JUnit 6 = class major 61 → 需 J
 junit_legacy = "5.14.4"         # [LEG §3.3] 最后一个 Java 8 可加载的 5.x
 spotbugs = "4.10.4"             # [LEG §3.2] 4.10.x 需 Java 11 运行
 spotbugs_legacy = "4.8.6"       # [LEG §3.2] 最后一版能跑在 Java 8 上
+# 实测（2026-09-25，templates-dev 真构建，wrapper 9.8.0，非 dry-run）：
+#   1.21.11 paper+bukkit + --features spotbugs → BUILD SUCCESSFUL（工具 4.10.4，Total 0 Warnings，
+#     main/test/integrationTest 三套源集）；1.8.9 bukkit + --features spotbugs → BUILD SUCCESSFUL（4.8.6）。
+#   同批构建里 quality 默认开的 checkstyle 10.24.0 与 junit 6.1.3 亦为绿 → §9.5/R3 的"以首次真机构建为准"
+#   对 checkstyle/spotbugs/junit 三项已可据此销掉。
 
 [gradle]
 version = "9.8.0"               # [VM §5.1] services.gradle.org/versions/current
@@ -124,7 +129,9 @@ java = 21
 # 是两个版本，键名区分（canonical key: spotbugs_plugin）。
 version = "6.5.11"   # plugins.gradle.org/m2 marker <release>（lastUpdated 20260820）；等价实现 com.github.spotbugs.snom:spotbugs-gradle-plugin
 # 无 gradle_min：该 .module 不声明 org.gradle.plugin.api-version（由 Gradle 8.14.5 构建），
-# 与 shadow/run-paper 那种硬地板不同；能不能跑在 Gradle 9.8 上以首次真机构建为准（§9.4 默认关）。
+# 与 shadow/run-paper 那种硬地板不同。实测（2026-09-25，wrapper 9.8.0）：1.21.11 paper+bukkit
+# 与 1.8.9 bukkit 的 --features spotbugs 真构建均 BUILD SUCCESSFUL，无 com.github.spotbugs.snom
+# 解析错误、无 plugin api-version 报错 → 6.5.11 在 Gradle 9.8 上可用。
 java = 11            # .module org.gradle.jvm.version = 11（Gradle 9.8 的 JVM 17–27 满足）
 
 [repositories]

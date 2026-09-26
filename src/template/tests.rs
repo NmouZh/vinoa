@@ -842,10 +842,12 @@ path = "a.txt"
 fn implemented_features_are_declared_and_rejected_when_unknown() {
     let m = super::load_builtin().expect("builtin manifest");
     let impl_feats = m.implemented_features();
-    assert!(impl_feats.iter().any(|f| f == "example"));
-    assert!(impl_feats.iter().any(|f| f == "quality"));
-    // Optional modules (task-7) are not implemented yet and must NOT be claimed.
-    assert!(!impl_feats.iter().any(|f| f == "sqlite" || f == "bstats" || f == "gui"));
+    // Every token with real `./gradlew build` evidence (task-7) is claimed;
+    // `KNOWN_FEATURES` is the closed vocabulary init compares against.
+    assert_eq!(impl_feats.len(), super::manifest::KNOWN_FEATURES.len());
+    for token in super::manifest::KNOWN_FEATURES {
+        assert!(impl_feats.iter().any(|f| f == token), "missing {token}");
+    }
 
     let bad = r#"
 schema = 1
@@ -942,6 +944,36 @@ render = "copy"
     let blob = plan.files.iter().find(|f| f.path == "bin/blob.dat").unwrap();
     assert!(!blob.executable);
     assert!(blob.content.contains(&0u8));
+}
+
+#[test]
+fn conditional_assertions_only_apply_when_the_condition_holds() {
+    let manifest = r#"
+schema = 1
+id = "t"
+template_version = "1.0.0"
+min_cli_version = "0.1.0"
+vars = []
+[[entries]]
+path = "a.txt"
+[[assertions]]
+target = "a.txt"
+when = "cap_gui"
+contains = ["MUST-APPEAR"]
+"#;
+    let dir = write_tree(&[("a.txt", "static\n")]);
+    let m = load_from_str_with_source(manifest, SourceRef::Dir(dir.path().to_path_buf())).unwrap();
+    let spec = spec(&[]);
+    let resolved = resolved_for(&spec);
+
+    // cap_gui off (default): the assertion is skipped, the plan is fine.
+    let off = build_plan_with_vars(&m, &spec, &resolved, &BTreeMap::new()).unwrap();
+    assert_eq!(off.files.len(), 1);
+
+    // cap_gui on: the assertion applies and fails loudly.
+    let err = build_plan_with_vars(&m, &spec, &resolved, &extra("cap_gui", json!(true))).unwrap_err();
+    assert_eq!(err.code, "render.assertion_failed", "{}", err.message);
+    assert!(err.message.contains("MUST-APPEAR"));
 }
 
 #[test]

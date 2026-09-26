@@ -700,7 +700,7 @@ fn validate(data: &MatrixData) -> std::result::Result<(), String> {
     if data.java.is_empty() {
         return Err("[java] 为空".to_string());
     }
-    for (mc, _) in data.java.iter() {
+    for mc in data.java.keys() {
         if mc_key(mc).is_none() {
             return Err(format!("[java] 键 {mc:?} 不是 X.Y[.Z] 形式的 MC 版本"));
         }
@@ -796,7 +796,7 @@ fn validate(data: &MatrixData) -> std::result::Result<(), String> {
                         }
                     }
                 }
-                for (v, _) in p.coordinate_map.iter() {
+                for v in p.coordinate_map.keys() {
                     if !data.java.contains_key(v) {
                         return Err(format!("platform.{name}.coordinate_map 含未知版本 {v:?}"));
                     }

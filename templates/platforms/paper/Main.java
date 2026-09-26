@@ -61,7 +61,7 @@ public final class {{ pluginName }} extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ExampleListener(service), this);
 {% if cap_bstats and cap_libraries %}
         // bStats is not a server plugin: its classes arrive through the libraries: metadata field.
-        new Metrics(this);
+        Metrics.start(this);
 {% endif %}
 {% if cap_placeholderapi %}
         // Soft dependency: only register the expansion when the API is really on the classpath.

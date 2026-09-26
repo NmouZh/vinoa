@@ -1,2 +1,12 @@
 /target
 thinking-effort-loaded.json
+
+# Scratch directories used while verifying terminal behaviour (pty captures,
+# throwaway probe crates, VT-simulator runs). Never part of the deliverable.
+/.tmpcap/
+/.tmpcap2/
+/.tmp-*/
+
+# Python bytecode from the prototype renderer
+__pycache__/
+*.pyc

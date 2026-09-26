@@ -15,7 +15,7 @@ fn pl(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
 
-fn plan<'a>(matrix: &'a Matrix, mc: &str, platform: &str) -> crate::types::PlatformPlan {
+fn plan(matrix: &Matrix, mc: &str, platform: &str) -> crate::types::PlatformPlan {
     matrix
         .platform_plan(mc, platform)
         .unwrap_or_else(|| panic!("expected {platform} × {mc} to exist"))
@@ -236,7 +236,7 @@ fn whitelists_only_contain_selectable_versions() {
     // and the reverse direction: supported_versions() covers every whitelisted MC version
     let supported = matrix.supported_versions();
     for p in ["paper", "bukkit", "folia", "sponge", "minestom"] {
-        for mc in matrix.platform_versions(&p) {
+        for mc in matrix.platform_versions(p) {
             assert!(supported.contains(&mc), "{mc} reachable via {p} but not offered");
         }
     }

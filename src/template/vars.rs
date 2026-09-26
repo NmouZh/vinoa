@@ -346,7 +346,7 @@ pub fn build_context(
             .quality
             .get(key)
             .cloned()
-            .or_else(|| spec_default(&key, &mut warnings));
+            .or_else(|| spec_default(key, &mut warnings));
         if let Some(v) = value {
             ctx.insert(name.to_string(), json!(v));
         }
@@ -356,7 +356,7 @@ pub fn build_context(
             .gradle_plugins
             .get(key)
             .cloned()
-            .or_else(|| spec_default(&key, &mut warnings));
+            .or_else(|| spec_default(key, &mut warnings));
         if let Some(v) = value {
             ctx.insert(name.to_string(), json!(v));
         }

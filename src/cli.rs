@@ -341,7 +341,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum TopCommand {
     /// 生成一个新的插件工程（spec §3.1）
-    Init(InitCli),
+    Init(Box<InitCli>),
     /// 打印版本矩阵 / 刷新缓存（spec §3.4）
     Versions(VersionsCli),
     /// 打印机器可读的命令契约
@@ -388,7 +388,7 @@ pub fn parse() -> Result<Command> {
         Some(TopCommand::Init(init)) => {
             // `-c/--config` merges into the args here, at the parsing layer, so
             // the orchestrator only ever builds a spec from `InitArgs` (§3.2).
-            let mut args = init_args(init)?;
+            let mut args = init_args(*init)?;
             if let Some(path) = args.config.clone() {
                 let cfg = load_config(std::path::Path::new(&path))?;
                 apply_config(&mut args, &cfg)?;
@@ -1086,7 +1086,7 @@ mod tests {
         ])
         .unwrap();
         let Some(TopCommand::Init(c)) = cmd.command else { panic!("expected init") };
-        let args = init_args(c).unwrap();
+        let args = init_args(*c).unwrap();
         assert_eq!(args.name.as_deref(), Some("my-plugin"));
         assert_eq!(args.platforms, vec!["paper", "velocity"]);
         assert_eq!(args.features, vec!["sqlite", "bstats"]);
@@ -1107,7 +1107,7 @@ mod tests {
         ] {
             let cmd = Cli::try_parse_from(&argv).unwrap();
             let Some(TopCommand::Init(c)) = cmd.command else { panic!() };
-            let err = init_args(c).unwrap_err();
+            let err = init_args(*c).unwrap_err();
             assert_eq!(err.exit_code(), crate::error::EXIT_USAGE, "{argv:?}");
         }
     }

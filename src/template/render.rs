@@ -317,10 +317,10 @@ impl<'a> Parser<'a> {
         }
         if let Some(Tok::Ident(name)) = self.peek().cloned() {
             // Built-in predicates / combinators are function-call shaped.
-            if matches!(name.as_str(), "any_of" | "all_of" | "is_server_platform") {
-                if self.toks.get(self.pos + 1) == Some(&Tok::LParen) {
-                    return self.parse_builtin(&name);
-                }
+            if matches!(name.as_str(), "any_of" | "all_of" | "is_server_platform")
+                && self.toks.get(self.pos + 1) == Some(&Tok::LParen)
+            {
+                return self.parse_builtin(&name);
             }
             if name == "true" || name == "false" {
                 self.pos += 1;
@@ -424,7 +424,7 @@ impl<'a> Parser<'a> {
                 let hit = match &left {
                     Val::List(items) => items.iter().any(|i| i == &needle),
                     Val::Str(s) => s.contains(&needle),
-                    Val::Num(n) => n.to_string() == needle,
+                    Val::Num(n) => n.as_str() == needle.as_str(),
                     Val::Bool(b) => b.to_string() == needle,
                 };
                 Ok(if op == Tok::Contains { hit } else { !hit })

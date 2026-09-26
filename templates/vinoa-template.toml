@@ -30,7 +30,11 @@ vars = [
 # token 用 CLI 原词：sqlite/bstats/update-check/placeholderapi/gui/spotbugs/coverage/
 # release-ci + example/permissions/quality/git。templates-dev 每交付一个模块加一项。
 [features]
-implemented = ["example", "permissions", "quality", "git"]
+implemented = [
+  "example", "permissions", "quality", "git",
+  "sqlite", "bstats", "update-check", "placeholderapi",
+  "gui", "spotbugs", "coverage", "release-ci",
+]
 
 # 开关名 -> §7.5 表达式。内置开关（cap_*/has_*/is_*）由 Rust 侧自动折叠；
 # 这里只声明需要额外组合的（v1 暂无）。
@@ -254,16 +258,19 @@ path = "core/src/main/java/{{ packagePath }}/storage/SqliteStorage.java"
 when = "cap_sqlite"
 
 # GUI / bStats / PlaceholderAPI 依赖 Bukkit 系 API，代理端与 sponge/minestom 不生成。
+# 注意 bungeecord 属于代理端：既没有 Bukkit `Inventory`（GUI 无从谈起），矩阵里也只有
+# `bstats-bukkit` 一个 bStats 制品，故 `is_bungeecord` 绝不进这两个条件——否则 foreach
+# 会在代理端展开出一个根本不存在的模板文件（`platforms/bungeecord/gui/Menu.java`）。
 [[entries]]
 template = "platforms/_p_/gui/Menu.java"
 path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/gui/Menu.java"
-when = "all_of(cap_gui, any_of(is_paper, is_folia, is_bukkit, is_bungeecord))"
+when = "all_of(cap_gui, any_of(is_paper, is_folia, is_bukkit))"
 foreach = "platforms"
 
 [[entries]]
 template = "platforms/_p_/metrics/Metrics.java"
 path = "platforms/{{ platform }}/src/main/java/{{ packagePath }}/{{ platform }}/metrics/Metrics.java"
-when = "all_of(cap_bstats, any_of(is_paper, is_folia, is_bukkit, is_bungeecord))"
+when = "all_of(cap_bstats, any_of(is_paper, is_folia, is_bukkit))"
 foreach = "platforms"
 
 [[entries]]
@@ -280,6 +287,18 @@ target = "settings.gradle.kts"
 contains = [
   'rootProject.name = "{{ projectName }}"',
   'include("core"',
+]
+
+# release.yml 只在 cap_release_ci 时生成，故断言也带 when（YAML 无解析器，用结构断言兜）。
+[[assertions]]
+target = ".github/workflows/release.yml"
+when = "cap_release_ci"
+contains = [
+  "softprops/action-gh-release@v2",
+  "contents: write",
+  "tags: ['v*']",
+  "files: dist/*.jar",
+  "java-version: '{{ javaTargetMax }}'",
 ]
 
 [[assertions]]

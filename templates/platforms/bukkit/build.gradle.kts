@@ -69,6 +69,10 @@ dependencies {
 {% if cap_bstats %}
     // bStats classes are needed on the runtime classpath; see the libraries: entry in plugin.yml.
     compileOnly("{{ thirdparty.bstats }}")
+{% if not cap_libraries %}
+    // This target predates the `libraries:` metadata field: bundle bStats with a shading step
+    // (and relocate it) before calling Metrics.start, otherwise the classes are missing at runtime.
+{% endif %}
 {% endif %}
 {% if cap_placeholderapi %}
     // PlaceholderAPI itself provides these classes at runtime (soft dependency).

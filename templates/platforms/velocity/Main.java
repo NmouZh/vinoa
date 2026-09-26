@@ -50,7 +50,8 @@ public final class {{ pluginName }} {
     private final CommandManager commandManager;
 
     @Inject
-    public {{ pluginName }}(final ProxyServer proxy, final Logger logger, final CommandManager commandManager) {
+    public {{ pluginName }}(
+            final ProxyServer proxy, final Logger logger, final CommandManager commandManager) {
         this.proxy = proxy;
         this.logger = logger;
         this.commandManager = commandManager;
