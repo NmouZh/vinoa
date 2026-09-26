@@ -80,12 +80,25 @@ jobs:
         run: |
           ./target/debug/vinoa init my-plugin -p com.example.myplugin \
             -m "${{ matrix.mc }}" --platform "${{ matrix.platform }}" -y --no-git
-      - name: Warm-up dependencies (network)
+      - name: Warm-up (network)
         shell: bash
         working-directory: my-plugin
         run: |
-          if [ -f gradlew ]; then ./gradlew dependencies ${{ env.GRADLE_NO_AUTO_DOWNLOAD }} || true
-          else gradle dependencies ${{ env.GRADLE_NO_AUTO_DOWNLOAD }} || true; fi
+          # ruling B2: the guaranteed row may go online to warm the cache; the
+          # *build* below is what must work offline.
+          #
+          # A plain `./gradlew dependencies` is NOT sufficient: it only resolves
+          # the default (compile/runtime) graph, leaving tool-only configurations
+          # such as `checkstyle` cold. `build --offline` then fails with
+          # "No cached version of com.puppycrawl.tools:checkstyle:9.3 available
+          # for offline mode". So warm with a real build, and let a warm-up
+          # failure surface here instead of as a confusing offline error.
+          if [ -f gradlew ]; then ./gradlew build ${{ env.GRADLE_NO_AUTO_DOWNLOAD }}
+          else gradle build ${{ env.GRADLE_NO_AUTO_DOWNLOAD }}; fi
+          # Drop the build outputs (but keep ~/.gradle caches) so the offline
+          # build below really recompiles from scratch rather than going
+          # UP-TO-DATE — otherwise the offline assertion would be vacuous.
+          if [ -f gradlew ]; then ./gradlew clean; else gradle clean; fi
       - name: Build generated project (offline, guaranteed row)
         shell: bash
         working-directory: my-plugin
